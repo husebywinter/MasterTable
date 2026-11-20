@@ -4,7 +4,7 @@
     "AzureWebJobsStorage": "",
     "FUNCTIONS_WORKER_RUNTIME": "node",
     "SQL_SERVER": "sql-powerbiwriteback.database.windows.net",
-    "SQL_DATABASE": "sql-powerbiwriteback.database.windows.net",
+    "SQL_DATABASE": "sqldb-powerbiwriteback",
     "SQL_CONNECTION_STRING": ""
   }
 }
