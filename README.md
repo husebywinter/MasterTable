@@ -10,7 +10,7 @@ Power BI-tabell der hver rad får en **kategori** (*Justert*, *Ikke justert*, *K
 
 Åpne `MasterTable.code-workspace` i VS Code.
 
-**Steg for steg med sjekkliste: se [OPPSETT.md](OPPSETT.md).** Oppsettet er for Azure SQL med private endpoint (VNet-integrasjon og gateway). Seksjonene under er for lokal utvikling.
+**Steg for steg med sjekkliste: se [OPPSETT.md](OPPSETT.md).** Oppsettet er for bedriftsnett med private endpoints: eksisterende Function App, deploy fra en maskin på nettet, og gateway for Power BI Service. Seksjonene under er for lokal utvikling.
 
 ## Kom i gang (lokal test)
 
