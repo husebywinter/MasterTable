@@ -29,12 +29,33 @@ Mye av dette må du sannsynligvis få fra IT eller den som eier Azure-oppsettet.
 |---|---|---|
 | SQL-server | – | `sql-powerbiwriteback.database.windows.net` |
 | Database | – | `sqldb-powerbiwriteback` |
-| **VNet** som private endpoint ligger i | SQL-serveren › *Security › Networking* › fanen *Private access* › klikk på endpointen › *Virtual network/subnet* | |
-| **Ledig subnett for Function App-en** | Må lages, se steg 4 | |
-| **Privat DNS-sone** `privatelink.database.windows.net` koblet til VNet-et | Portalen › *Private DNS zones*. Den lages vanligvis sammen med private endpoint. | |
+| Private endpoint | – | `pe-sqc-sql` |
+| **VNet** som private endpoint ligger i | `pe-sqc-sql` › *Overview* › *Virtual network/subnet* | `vnet-swedencentral-azfw-subs-mc-corp-powerbi-tools-prod` (subnett `subnet-sql-mi`) |
+| **Region** | Samme som VNet-et | **Sweden Central** |
+| **Ledig subnett for Function App-en** | Må lages i VNet-et over, se steg 4 og [bestillingen til IT](#bestilling-til-it) | |
+| **Privat DNS-sone** `privatelink.database.windows.net` koblet til VNet-et | Portalen › *Private DNS zones*. I et sentralt corp-oppsett ligger den ofte i hub-nettverket og styres av IT. | |
 | **Tilgang til nettverket** for deg | VPN-klient på jobb-PC, eller en VM i VNet-et | |
 | **Gateway-type** | Har organisasjonen Fabric/Premium-kapasitet? Finnes det en gateway fra før? Spør Power BI-admin. | |
 | Function App-navn | Velger du selv i steg 5 | |
+
+---
+
+## Bestilling til IT
+
+VNet-et (`…-azfw-…-mc-corp-…`) ser ut til å være en del av et sentralt styrt bedriftsnett med Azure Firewall. Da er det vanligvis IT eller plattformteamet som lager subnett, åpner brannmur og styrer DNS. Send dem dette:
+
+> **Emne:** Subnett og nettverkstilgang for Azure Function og Power BI-gateway (MasterTable)
+>
+> Hei! Jeg setter opp en Power BI-løsning som skriver til Azure SQL `sql-powerbiwriteback` (database `sqldb-powerbiwriteback`) via private endpoint `pe-sqc-sql` i `vnet-swedencentral-azfw-subs-mc-corp-powerbi-tools-prod`. Jeg trenger:
+>
+> 1. **Subnett til Azure Function (Flex Consumption)** i samme VNet, minst `/27`, delegert til `Microsoft.App/environments`, f.eks. `snet-func-mastertable`.
+> 2. **Trafikk fra det subnettet til private endpoint `pe-sqc-sql` på TCP 1433** (NSG og Azure Firewall).
+> 3. **Utgående HTTPS (443) fra funksjonens subnett** til Microsoft Entra ID (`login.microsoftonline.com`) og Azure Storage, slik at managed identity og selve funksjonen virker.
+> 4. **DNS**: at `sql-powerbiwriteback.database.windows.net` slås opp til den private adressen fra VNet-et (privat DNS-sone `privatelink.database.windows.net`).
+> 5. **Gateway for Power BI Service**: enten et subnett delegert til `Microsoft.PowerPlatform/vnetaccesslinks` for en VNet data gateway (hvis vi har Fabric- eller Premium-kapasitet), eller tilgang til en eksisterende on-premises data gateway som når databasen.
+> 6. **Tilgang for meg** (VPN eller jump-VM) til databasen, slik at jeg kan opprette tabellene.
+>
+> Function App-en lages i Sweden Central med public access på (den kalles fra Power BI-visualen over https med function key). All trafikk til databasen går via VNet-et.
 
 ---
 
@@ -74,7 +95,7 @@ Mye av dette må du sannsynligvis få fra IT eller den som eier Azure-oppsettet.
 
 - [ ] **5. Lag Function App**
   - Portalen › **Create a resource** › **Function App** › **Flex Consumption**
-  - Samme subscription og region som VNet-et. Runtime: **Node.js 22 LTS**. Navn: f.eks. `func-mastertable`
+  - Samme subscription og region som VNet-et (**Sweden Central**). Runtime: **Node.js 22 LTS**. Navn: f.eks. `func-mastertable`
   - Fanen **Networking**:
     - **Enable public access: On.** Visualen kaller funksjonen fra nettleseren til brukerne, så funksjonen må kunne nås utenfra. Den er beskyttet med function key.
     - **Enable virtual network integration: On** › velg VNet-et og subnettet fra steg 4
