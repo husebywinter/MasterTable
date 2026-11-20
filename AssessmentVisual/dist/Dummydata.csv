@@ -1,0 +1,17 @@
+﻿Prosjekt;År;Prosjektnavn;Segment;Timepris;Endring;Timer
+P-1001;2025;Statens vegvesen – rammeavtale;Anlegg;1180;0,04;1840
+P-1002;2025;Equinor drift;Energi;1325;0,0;2210
+P-1003;2025;Oslo kommune – byggeledelse;Bygg;990;0,0;960
+P-1004;2025;Telenor nettverk;Telekom;1410;0,03;1530
+P-1005;2025;Bane NOR signal;Samferdsel;1255;0,05;1710
+P-1006;2025;Norsk Hydro;Industri;1500;0,06;2480
+P-1007;2025;Helse Bergen – nybygg;Bygg;1095;0,0;820
+P-1008;2025;Avinor Gardermoen;Samferdsel;1340;0,045;1390
+P-1001;2026;Statens vegvesen – rammeavtale;Anlegg;1227;0,045;1960
+P-1002;2026;Equinor drift;Energi;1325;0,0;2330
+P-1003;2026;Oslo kommune – byggeledelse;Bygg;990;0,0;1080
+P-1004;2026;Telenor nettverk;Telekom;1452;0,021;1650
+P-1005;2026;Bane NOR signal;Samferdsel;1318;0,0;1830
+P-1006;2026;Norsk Hydro;Industri;1590;0,06;2600
+P-1007;2026;Helse Bergen – nybygg;Bygg;1095;0,035;940
+P-1008;2026;Avinor Gardermoen;Samferdsel;1400;0,0;1510

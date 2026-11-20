@@ -70,6 +70,11 @@ Node og `func` er allerede installert på denne PC-en.
     ```
   - Du skal få 3 rader: *Justert*, *Ikke justert* og *Kan ikke justeres*
 
+- [ ] **6b. (Valgfritt) Legg inn dummy-vurderinger**
+  - Åpne og kjør `MasterTable\AssessmentVisual\dist\Dummydata_vurderinger.sql`
+  - Den legger inn 10 vurderinger med Kontekst `Test` som passer til `Dummydata.xlsx`, slik at tabellen ikke er tom første gang
+  - Slette dem igjen: `DELETE dbo.Assessment WHERE Context = N'Test';`
+
 ---
 
 ## Del C – Start lagringsfunksjonen på PC-en
@@ -88,9 +93,10 @@ Node og `func` er allerede installert på denne PC-en.
 ## Del D – Power BI Desktop
 
 - [ ] **8. Lag testdata**
-  - Velg **Hjem › Skriv inn data**
-  - Lag to kolonner, `Prosjekt` og `År`, og fyll inn 3–4 rader, f.eks. `P-1001` og `2026`
-  - Kall tabellen `Prosjekter` og klikk **Last inn**
+  - Velg **Hjem › Excel-arbeidsbok** og åpne `MasterTable\AssessmentVisual\dist\Dummydata.xlsx`
+  - Huk av tabellen **Prosjekter** og klikk **Last inn**
+  - Filen har 8 prosjekter × 2 år med kolonnene `Prosjekt`, `År`, `Prosjektnavn`, `Segment`, `Timepris`, `Endring` og `Timer`
+  - `Dummydata.csv` inneholder det samme, hvis du heller vil bruke den
 
 - [ ] **9. Koble til databasen**
   - Velg **Hent data › Azure SQL-database**
@@ -134,6 +140,8 @@ Node og `func` er allerede installert på denne PC-en.
   | Feltboks | Dra inn |
   |---|---|
   | Radnøkkel | `Prosjekt`, deretter `År` |
+  | Infokolonner *(valgfritt)* | `Prosjektnavn`, `Segment` |
+  | Verdier *(valgfritt)* | `Timepris`, `Endring`, `Timer` (sett aggregering til **Sum**) |
   | Kategori (lagret) | målet `Kategori` |
   | Kommentar (lagret) | målet `Kommentar` |
   | Bruker *(valgfritt)* | et mål `User = USERPRINCIPALNAME()` |

@@ -2,5 +2,6 @@ node_modules/
 .tmp/
 dist/*
 !dist/*.pbiviz
+!dist/Dummydata*
 webpack.statistics.*.html
 certs/
