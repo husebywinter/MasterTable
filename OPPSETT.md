@@ -1,247 +1,218 @@
-# Oppsett – sjekkliste
+# Oppsett – sjekkliste (rett i skyen)
 
-Gå gjennom stegene i rekkefølge og kryss av underveis. Del A–D er nok til å teste på din egen PC. Del E trenger du først når andre skal bruke rapporten.
+Alt gjøres i **Azure-portalen**, på **GitHub** og i **Power BI**. Du trenger ikke kjøre noe lokalt, ingen `az login`, `func start` eller Node på PC-en. Det eneste du installerer, er **Power BI Desktop**, for å bygge rapporten før den publiseres.
 
-Oppsettet bruker **Microsoft Entra ID med MFA** (din vanlige jobbkonto), så du trenger ikke noe SQL-passord. Har du likevel en SQL-bruker med passord, ser du [Alternativ: SQL-brukernavn og passord](#alternativ-sql-brukernavn-og-passord) nederst.
+Innlogging skjer med jobbkontoen din og MFA. I drift skriver Azure-funksjonen til databasen med sin egen identitet (managed identity), så det finnes ingen passord noe sted.
+
+```
+Bruker ─(Power BI-innlogging)─▶ Power BI Service ─▶ visual ─(function key)─▶ Azure Function ─(managed identity)─▶ Azure SQL
+                                       └──────────── DirectQuery (lagret innlogging) ──────────────────────────────────┘
+```
 
 ---
 
 ## Informasjon du trenger
 
-Alt finner du i Azure-portalen ([portal.azure.com](https://portal.azure.com)).
+| Hva | Verdi |
+|---|---|
+| SQL-server | `sql-powerbiwriteback.database.windows.net` |
+| Database | `sqldb-powerbiwriteback` |
+| Function App-navn | Velger du selv i steg 5, f.eks. `func-mastertable` |
+| GitHub-repo | `husebywinter/MasterTable` |
 
-| Hva | Hvor finner jeg det | Eksempel | Brukes i steg |
-|---|---|---|---|
-| **Servernavn** | SQL databases › din database › *Overview* › «Server name» | `minserver.database.windows.net` | 2, 5, 10 |
-| **Databasenavn** | SQL databases › navnet i listen | `PlanningDb` | 2, 5, 10 |
-| **Jobbkontoen din** | Den du logger inn i Azure med | `torgeir@firma.no` | 4, 5, 10 |
-| *(Del E)* **Function App-navn** | Velger du selv når du lager den | `mastertable-func` | 18–23 |
-
-Kontoen din må ha tilgang til databasen. Kommer du inn med MFA i VS Code eller SSMS i dag, er det i orden.
-
-**Programmer som må være installert:**
-
-| Program | Sjekk i PowerShell | Mangler det? |
-|---|---|---|
-| Node.js | `node --version` | [nodejs.org](https://nodejs.org) (LTS) |
-| Azure Functions Core Tools | `func --version` | `npm install -g azure-functions-core-tools@4` |
-| Azure CLI | `az --version` | [Installer Azure CLI](https://aka.ms/installazurecliwindows) |
-| VS Code + utvidelsen **SQL Server (mssql)** | – | Søk etter «mssql» under Extensions i VS Code |
-| Power BI Desktop | – | Microsoft Store |
-
-Node, `func` og `az` er allerede installert på denne PC-en.
+Kontoen din må kunne logge inn på databasen med Entra ID. Den må også ha rettigheter til å lage tabeller, f.eks. som Entra-admin på SQL-serveren eller med `db_owner`.
 
 ---
 
-## Del A – Gi PC-en tilgang til databasen
+## Del A – Lag tabellene (Azure-portalen, ca. 5 min)
 
-- [ ] **1. Åpne innstillingsfilen**
-  - Åpne filen `C:\Users\torge\Documents\Forecasting\MasterTable\AzureFunction\local.settings.json`
-  - Finnes den ikke: kopier `local.settings.example.json` i samme mappe og gi kopien navnet `local.settings.json`
+- [ ] **1. Åpne Query editor**
+  - [portal.azure.com](https://portal.azure.com) › **SQL databases** › `sqldb-powerbiwriteback` › **Query editor (preview)** i menyen til venstre
+  - Velg **Continue as <din konto>**, som bruker Entra-innloggingen med MFA
+  - Får du melding om IP-adressen: klikk **Allowlist IP …** og logg inn på nytt
 
-- [ ] **2. Fyll inn server og database**
-  - Erstatt de to plassholderne:
-    ```json
-    "SQL_SERVER": "minserver.database.windows.net",
-    "SQL_DATABASE": "PlanningDb",
-    "SQL_CONNECTION_STRING": ""
+- [ ] **2. Kjør skriptet**
+  - Åpne [`database/assessment_portal.sql`](database/assessment_portal.sql) på GitHub, klikk **Raw** og kopier alt
+  - Lim det inn i Query editor og klikk **Run**
+  - Nederst skal du få 3 rader: *Justert*, *Ikke justert* og *Kan ikke justeres*
+  - Denne versjonen av skriptet er laget for portalen og har ingen `GO`-linjer. Den gjør det samme som `assessment.sql`.
+
+- [ ] **3. (Valgfritt) Legg inn dummy-vurderinger**
+  - Gjør det samme med [`AssessmentVisual/dist/Dummydata_vurderinger.sql`](AssessmentVisual/dist/Dummydata_vurderinger.sql)
+  - Det gir 10 vurderinger med Kontekst `Test`. Slette dem igjen: `DELETE dbo.Assessment WHERE Context = N'Test';`
+
+- [ ] **4. Gi Azure-tjenester tilgang til SQL-serveren**
+  - Portalen › SQL-serveren `sql-powerbiwriteback` › **Networking**
+  - Huk av **Allow Azure services and resources to access this server** › **Save**
+  - Både funksjonen og Power BI Service trenger dette
+
+---
+
+## Del B – Azure Function (portal og GitHub, ca. 20 min)
+
+- [ ] **5. Lag Function App**
+  - Portalen › **Create a resource** › **Function App** › **Flex Consumption** › *Select*
+  - Velg samme **Subscription** og **Resource group** som databasen
+  - **Function App name:** f.eks. `func-mastertable`
+  - **Region:** samme som databasen
+  - **Runtime stack:** Node.js, **Version:** 22 LTS
+  - Klikk **Review + create** › **Create**, og vent til den er ferdig
+  - Bruk **ikke** samme Function App som Planning Grid. Deploy erstatter alle funksjonene i appen.
+
+- [ ] **6. Slå på managed identity**
+  - Function App › **Settings › Identity** › fanen *System assigned* › **Status: On** › **Save** › **Yes**
+
+- [ ] **7. Gi funksjonen tilgang til databasen**
+  - Tilbake i Query editor (steg 1), kjør dette. Bytt ut `func-mastertable` med navnet fra steg 5.
+    ```sql
+    CREATE USER [func-mastertable] FROM EXTERNAL PROVIDER;
+    ALTER ROLE db_datareader ADD MEMBER [func-mastertable];
+    ALTER ROLE db_datawriter ADD MEMBER [func-mastertable];
+    GRANT EXECUTE ON dbo.usp_SaveAssessments TO [func-mastertable];
     ```
-  - La `SQL_CONNECTION_STRING` stå tom
-  - Lagre. Filen inneholder ikke noe passord og blir aldri lastet opp til GitHub.
+  - Får du en feil om tilgang, må Entra-admin på SQL-serveren kjøre dette
 
-- [ ] **3. Åpne brannmuren for PC-en din**
-  - Portalen › SQL-serveren (klikk på servernavnet) › *Networking*
-  - Klikk **Add your client IPv4 address** og deretter **Save**
-  - Må gjøres på nytt hvis du bytter nettverk, f.eks. hjemme og på jobb
+- [ ] **8. Fortell funksjonen hvilken database den skal bruke**
+  - Function App › **Settings › Environment variables** › **+ Add**, to ganger:
 
-- [ ] **4. Logg inn i Azure på PC-en**
-  - Kjør dette i PowerShell:
-    ```powershell
-    az login
+    | Name | Value |
+    |---|---|
+    | `SQL_SERVER` | `sql-powerbiwriteback.database.windows.net` |
+    | `SQL_DATABASE` | `sqldb-powerbiwriteback` |
+
+  - Klikk **Apply** › **Confirm**
+
+- [ ] **9. Koble Function App til GitHub**
+  - Function App › **Deployment › Deployment Center**
+  - **Source:** GitHub › logg inn og gi tilgang
+  - **Organization:** `husebywinter`, **Repository:** `MasterTable`, **Branch:** `main`
+  - **Authentication type:** *User-assigned identity* (standard)
+  - Klikk **Save**. Azure legger da en workflow-fil i repoet, under `.github/workflows/`.
+
+- [ ] **10. Pek workflowen mot riktig mappe**
+  - Funksjonen ligger i mappen `AzureFunction`, ikke i roten av repoet
+  - På GitHub: åpne filen i `.github/workflows/` › blyant-ikonet (Edit)
+  - Finn linjen `AZURE_FUNCTIONAPP_PACKAGE_PATH: '.'` og endre den til:
+    ```yaml
+    AZURE_FUNCTIONAPP_PACKAGE_PATH: 'AzureFunction'
     ```
-  - Et nettleservindu åpnes. Logg inn med jobbkontoen og godkjenn MFA.
-  - Funksjonen bruker denne innloggingen mot databasen. Den varer en god stund, men kjør `az login` på nytt hvis du får innloggingsfeil senere.
+  - **Commit changes**. Deployen starter automatisk.
+
+- [ ] **11. Sjekk at deployen gikk bra**
+  - GitHub › fanen **Actions**: den siste kjøringen skal få grønn hake (ca. 2–3 min)
+  - Function App › **Overview** › nederst under *Functions* skal `saveAssessment` vises
+
+- [ ] **12. Hent function key**
+  - Function App › **Functions › App keys** › kopier verdien til `default`
+  - Function URL blir: `https://func-mastertable.azurewebsites.net/api/assessment/save` (med ditt navn)
 
 ---
 
-## Del B – Lag tabellene i databasen
+## Del C – Bygg rapporten (Power BI Desktop, ca. 15 min)
 
-- [ ] **5. Koble til fra VS Code**
-  - Klikk på SQL Server-ikonet i venstre kant › **Add Connection**
-  - Fyll inn servernavn og databasenavn
-  - Under **Authentication type** velger du **Microsoft Entra ID – Universal with MFA support**
-  - Velg kontoen din, eller klikk *Add account* og logg inn
+Desktop brukes bare til å lage rapporten. Lagringen går mot funksjonen i Azure fra første stund.
 
-- [ ] **6. Kjør skriptet**
-  - Åpne `MasterTable\database\assessment.sql`
-  - Trykk **Ctrl+Shift+E**, eller høyreklikk og velg *Execute Query*
+- [ ] **13. Last ned filene**
+  - Fra GitHub, mappen [`AssessmentVisual/dist`](AssessmentVisual/dist): `assessmentVisual….pbiviz` og `Dummydata.xlsx` (klikk filen › nedlastingsikonet)
 
-- [ ] **7. Sjekk at det virket**
-  ```sql
-  SELECT * FROM dbo.AssessmentCategory;
-  ```
-  - Du skal få 3 rader: *Justert*, *Ikke justert* og *Kan ikke justeres*
+- [ ] **14. Last inn testdata**
+  - **Hjem › Excel-arbeidsbok** › `Dummydata.xlsx` › huk av **Prosjekter** › **Last inn**
 
-- [ ] **7b. (Valgfritt) Legg inn dummy-vurderinger**
-  - Åpne og kjør `MasterTable\AssessmentVisual\dist\Dummydata_vurderinger.sql`
-  - Den legger inn 10 vurderinger med Kontekst `Test` som passer til `Dummydata.xlsx`
-  - Slette dem igjen: `DELETE dbo.Assessment WHERE Context = N'Test';`
+- [ ] **15. Koble til databasen**
+  - **Hent data › Azure SQL-database**
+  - Server `sql-powerbiwriteback.database.windows.net`, database `sqldb-powerbiwriteback`, velg **DirectQuery**
+  - Innlogging: **Microsoft-konto** › **Logg på** (MFA) › **Koble til**
+  - Huk av `vw_Assessment` › **Last inn**
 
----
-
-## Del C – Start lagringsfunksjonen på PC-en
-
-- [ ] **8. Start funksjonen** i et PowerShell-vindu:
-  ```powershell
-  cd C:\Users\torge\Documents\Forecasting\MasterTable\AzureFunction
-  npm install
-  func start
-  ```
-  - Når den er klar, står det `saveAssessment: [POST,OPTIONS] http://localhost:7071/api/assessment/save`
-  - **La vinduet stå åpent** så lenge du tester. Lukker du det, stopper lagringen.
-
----
-
-## Del D – Power BI Desktop
-
-- [ ] **9. Last inn testdata**
-  - Velg **Hjem › Excel-arbeidsbok** og åpne `MasterTable\AssessmentVisual\dist\Dummydata.xlsx`
-  - Huk av **Prosjekter** og klikk **Last inn**
-
-- [ ] **10. Koble til databasen**
-  - Velg **Hent data › Azure SQL-database**
-  - Skriv inn servernavn og databasenavn, og velg **DirectQuery**
-  - I innloggingsvinduet velger du **Microsoft-konto** til venstre › **Logg på**, og logger inn med jobbkontoen og MFA
-  - Klikk **Koble til**, huk av `vw_Assessment` og klikk **Last inn**
-
-- [ ] **11. Lag en nøkkelkolonne**
-  - Høyreklikk `Prosjekter` › **Ny kolonne** og lim inn:
+- [ ] **16. Nøkkelkolonne og relasjon**
+  - Høyreklikk `Prosjekter` › **Ny kolonne**:
     ```DAX
     RowKey = Prosjekter[Prosjekt] & "|" & Prosjekter[År]
     ```
+  - **Modellvisning**: dra `Prosjekter[RowKey]` over til `vw_Assessment[RowKey]`. Relasjonen skal være én (Prosjekter) til mange.
 
-- [ ] **12. Koble tabellene sammen**
-  - Åpne **Modellvisning** (det tredje ikonet til venstre)
-  - Dra `Prosjekter[RowKey]` over til `vw_Assessment[RowKey]`
-  - Kontroller at relasjonen er **én (Prosjekter) til mange (vw_Assessment)**
-
-- [ ] **13. Lag to mål** (eller endre dem, hvis du allerede har laget `BLANK()`-versjonene)
+- [ ] **17. To mål** (høyreklikk `Prosjekter` › **Nytt mål**)
   ```DAX
   Kategori = MAX(vw_Assessment[Category])
   ```
   ```DAX
   Kommentar = MAX(vw_Assessment[Comment])
   ```
+  ```DAX
+  User = USERPRINCIPALNAME()
+  ```
 
-- [ ] **14. Importer visualen** (hopp over hvis den allerede er på siden)
-  - Gå til Visualiseringer-panelet › **…** › **Importer et visualobjekt fra en fil**
-  - Velg `.pbiviz`-filen i `MasterTable\AssessmentVisual\dist\`
+- [ ] **18. Importer visualen**
+  - Visualiseringer-panelet › **…** › **Importer et visualobjekt fra en fil** › `.pbiviz`-filen
   - Klikk på det nye ikonet, slik at visualen havner på siden
 
-- [ ] **15. Legg inn feltene**
+- [ ] **19. Legg inn feltene**
 
   | Feltboks | Dra inn |
   |---|---|
   | Radnøkkel | `Prosjekt`, deretter `År` |
-  | Infokolonner *(valgfritt)* | `Prosjektnavn`, `Segment` |
-  | Verdier *(valgfritt)* | `Timepris`, `Endring`, `Timer` (velg **Sum** hvis det står Antall) |
-  | Kategori (lagret) | målet `Kategori` |
-  | Kommentar (lagret) | målet `Kommentar` |
-  | Bruker *(valgfritt)* | et mål `User = USERPRINCIPALNAME()` |
+  | Infokolonner | `Prosjektnavn`, `Segment` |
+  | Verdier | `Timepris`, `Endring`, `Timer` (velg **Sum** hvis det står Antall) |
+  | Kategori (lagret) | `Kategori` |
+  | Kommentar (lagret) | `Kommentar` |
+  | Bruker | `User` |
 
   - Høyreklikk `Prosjekt` i Radnøkkel-boksen og velg **Vis elementer uten data**
 
-- [ ] **16. Fortell visualen hvor den skal lagre** (Format › Write-back)
-
-  | Innstilling | Verdi |
-  |---|---|
-  | Function URL | `http://localhost:7071/api/assessment/save` |
-  | Function key | *(la stå tomt)* |
-  | Kontekst | `Test` |
-
-- [ ] **17. Test**
-  - Velg en kategori, skriv en kommentar og klikk på diskett-ikonet
-  - Det skal stå «Lagret kl. …», og verdiene skal bli stående etter at Power BI har oppdatert
-  - Sjekk også i VS Code: `SELECT * FROM dbo.vw_Assessment;`
-
----
-
-## Del E – I drift i Azure (når andre skal bruke rapporten)
-
-I Azure logger funksjonen inn med sin egen identitet (*managed identity*), heller ikke her trengs noe passord.
-
-- [ ] **18. Lag en egen Function App**
-  - Portalen › *Create a resource* › **Function App**
-  - Velg **Consumption**-plan, Runtime **Node.js 20**, og et navn du velger selv
-  - Bruk **ikke** samme Function App som Planning Grid. Publisering erstatter alle funksjonene i appen.
-
-- [ ] **19. Slå på managed identity**
-  - Function App › *Settings* › **Identity** › fanen *System assigned* › **On** › **Save**
-
-- [ ] **20. Gi funksjonen tilgang til databasen**
-  - Kjør dette i VS Code, koblet til databasen. Bytt ut navnet med navnet på Function App-en din.
-    ```sql
-    CREATE USER [mastertable-func] FROM EXTERNAL PROVIDER;
-    ALTER ROLE db_datareader ADD MEMBER [mastertable-func];
-    ALTER ROLE db_datawriter ADD MEMBER [mastertable-func];
-    GRANT EXECUTE ON dbo.usp_SaveAssessments TO [mastertable-func];
-    ```
-  - Får du en feil om tilgang, må en med admin-rettigheter på SQL-serveren kjøre dette for deg
-
-- [ ] **21. Sett server og database**
-  - Function App › *Settings* › *Environment variables* › **Add**, to ganger:
-    - `SQL_SERVER` = servernavnet
-    - `SQL_DATABASE` = databasenavnet
-  - Klikk **Apply**
-
-- [ ] **22. Gi Azure tilgang til SQL-serveren**
-  - SQL-serveren › *Networking*
-  - Huk av **Allow Azure services and resources to access this server** og klikk **Save**
-
-- [ ] **23. Publiser funksjonen**
-  ```powershell
-  az login
-  cd C:\Users\torge\Documents\Forecasting\MasterTable\AzureFunction
-  func azure functionapp publish <function-app-navn>
-  ```
-
-- [ ] **24. Hent function key**
-  - Function App › *Functions* › *App keys* › kopier verdien til `default`
-
-- [ ] **25. Pek visualen mot Azure** (Format › Write-back)
+- [ ] **20. Write-back-innstillinger** (Format › Write-back)
 
   | Innstilling | Verdi |
   |---|---|
   | Function URL | `https://<function-app-navn>.azurewebsites.net/api/assessment/save` |
-  | Function key | nøkkelen fra steg 24 |
-  | Kontekst | f.eks. `Ratejustering`. Bytt fra `Test`, ellers blandes testdata og ekte data. |
+  | Function key | nøkkelen fra steg 12 |
+  | Kontekst | `Test` (bytt til f.eks. `Ratejustering` når du går over til ekte data) |
 
-- [ ] **26. Bytt testdata mot ekte data**
-  - Erstatt `Prosjekter` med den ekte prosjekt/år-tabellen din
-  - Lag `RowKey` på samme måte som i steg 11
+- [ ] **21. Test i Desktop**
+  - Velg en kategori › diskett-ikonet › det skal stå «Lagret kl. …»
+
+- [ ] **22. Publiser**
+  - **Hjem › Publiser** › velg workspace
+
+---
+
+## Del D – Power BI Service (ca. 5 min)
+
+- [ ] **23. Sett innloggingen for databasen**
+  - app.powerbi.com › workspacet › den semantiske modellen › **…** › **Innstillinger**
+  - **Datakildelegitimasjon** › Azure SQL › **Rediger legitimasjon** › **OAuth2** › logg på (MFA)
+  - **Ikke** huk av for SSO (*Sluttbrukere bruker egen OAuth2-legitimasjon …*)
+  - På sikt: bytt til en service principal, slik at visningen ikke henger på kontoen din
+
+- [ ] **24. Test i Service**
+  - Åpne rapporten, velg en kategori og lagre
+
+- [ ] **25. Del med brukerne**
+  - Lag en **app** fra workspacet, eller gi brukerne **Viewer**-tilgang. Det er alt de trenger for å se og lagre.
+
+- [ ] **26. (Anbefalt) Organisasjonsvisual**
+  - Be en Power BI-admin laste opp `.pbiviz`-filen under **Admin-portal › Organisasjonsvisualer**
+  - Da er visualen godkjent sentralt, og nye versjoner kan rulles ut ett sted
+  - Tenant-innstillingen for egendefinerte visualer må tillate den
 
 ---
 
 ## Hvis noe går galt
 
-| Feilmelding | Årsak | Løsning |
+| Symptom | Årsak | Løsning |
 |---|---|---|
-| «Fikk ikke kontakt med Function App» (i visualen) | Funksjonen kjører ikke, eller URL-en er feil | Sjekk at `func start`-vinduet er åpent (steg 8), og sjekk URL-en (steg 16) |
-| «Database error» i visualen. I `func start`-vinduet står det `CredentialUnavailableError` eller `az login` | Ikke logget inn i Azure på PC-en | Kjør `az login` (steg 4), og start `func start` på nytt |
-| `Login failed for user '<token-identified principal>'` i `func start`-vinduet | Kontoen din, eller Function App-en i Azure, er ikke bruker i databasen | Lokalt: be en admin gi kontoen din tilgang. I Azure: gjør steg 20. |
-| `Client with IP address ... is not allowed` | Brannmuren | Gjør steg 3 på nytt (eller steg 22 i Azure) |
-| `ENOTFOUND <server>` | Plassholderen står fortsatt i innstillingsfilen | Fyll inn steg 2 |
-| «Ingen tilgang (401)» (i visualen) | Feil eller manglende function key (Azure) | Gjør steg 24 på nytt |
-| «Unknown category» | Kategorien finnes ikke i databasen | Sjekk at den er stavet likt i *Format › Tabell › Kategorier* og i `dbo.AssessmentCategory` |
-| Tabellen er tom | Ingen rader har vurdering ennå | Gjør steg 15 (*Vis elementer uten data*) |
-| Lagret, men verdien forsvinner | Relasjonen eller nøkkelen stemmer ikke | Sjekk steg 11–12. Kjør `SELECT RowKey FROM dbo.vw_Assessment` og sammenlign med `Prosjekter[RowKey]`. |
+| GitHub Actions feiler | Feil mappe | Sjekk steg 10: `AZURE_FUNCTIONAPP_PACKAGE_PATH: 'AzureFunction'` |
+| `saveAssessment` vises ikke i Function App | Deployen gikk til feil mappe, eller den har ikke kjørt | Steg 10–11 |
+| «Fikk ikke kontakt med Function App» (i visualen) | Feil URL, eller funksjonen er ikke deployet | Steg 11–12 og 20 |
+| «Ingen tilgang (401)» | Feil eller manglende function key | Steg 12 og 20 |
+| «Database error» (i visualen) | Funksjonen kommer ikke inn i databasen | Sjekk steg 4, 6, 7 og 8. Se loggen under Function App › *Monitoring › Log stream*. |
+| `Login failed for user '<token-identified principal>'` (i loggen) | Funksjonens identitet er ikke bruker i databasen | Steg 7, med nøyaktig samme navn som Function App-en |
+| «Unknown category» | Kategorien finnes ikke i databasen | Samme stavemåte i *Format › Tabell › Kategorier* og i `dbo.AssessmentCategory` |
+| Tabellen i visualen er tom | Ingen rader har vurdering ennå | Steg 19: *Vis elementer uten data* |
+| Lagret, men verdien vises ikke | Relasjonen eller nøkkelen stemmer ikke, eller legitimasjonen mangler i Service | Steg 16 og 23 |
+| Query editor: `CREATE USER … FROM EXTERNAL PROVIDER` feiler | Du er ikke logget inn med Entra, eller mangler rettigheter | Logg inn med *Continue as …*, eller be Entra-admin kjøre det |
 
 ---
 
-## Alternativ: SQL-brukernavn og passord
+## Lokal utvikling (valgfritt)
 
-Har du en SQL-bruker med passord i stedet for MFA:
-- Steg 2: la `SQL_SERVER` og `SQL_DATABASE` stå tomme, og lim inn ADO.NET-tilkoblingsstrengen fra portalen (*Connection strings*) i `SQL_CONNECTION_STRING`, med passordet ditt i stedet for `{your_password}`
-- Steg 4 trengs ikke
-- Steg 5 og 10: velg innloggingstypen *SQL Login* / *Database*
-- Del E: sett `SQL_CONNECTION_STRING` i stedet for steg 19–21
+Vil du endre koden og teste uten å deploye, kan funksjonen kjøres lokalt med `func start` og `az login`. Fyll inn `SQL_SERVER` og `SQL_DATABASE` i `AzureFunction/local.settings.json`, og bruk Function URL `http://localhost:7071/api/assessment/save`. Det trengs ikke for vanlig bruk.

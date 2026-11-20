@@ -6,11 +6,11 @@ Power BI-tabell der hver rad får en **kategori** (*Justert*, *Ikke justert*, *K
 |---|---|
 | [AssessmentVisual](AssessmentVisual/) | Power BI custom visual. Se [README](AssessmentVisual/README.md) for felter, oppsett og bruk. |
 | [AzureFunction](AzureFunction/) | Azure Function `saveAssessment` (`POST /api/assessment/save`) |
-| [database](database/) | `assessment.sql`: tabeller, historikk, lagringsprosedyre og views |
+| [database](database/) | `assessment.sql`: tabeller, historikk, lagringsprosedyre og views. `assessment_portal.sql`: samme, uten `GO`, for Query editor i Azure-portalen. |
 
 Åpne `MasterTable.code-workspace` i VS Code.
 
-**Steg for steg med sjekkliste: se [OPPSETT.md](OPPSETT.md).**
+**Steg for steg med sjekkliste: se [OPPSETT.md](OPPSETT.md).** Alt settes opp direkte i Azure og Power BI Service, uten lokale verktøy. Seksjonene under er for lokal utvikling.
 
 ## Kom i gang (lokal test)
 
