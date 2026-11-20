@@ -96,27 +96,22 @@ Begge skal gi `…privatelink…` og en `10.x.x.x`-adresse. Ser du offentlige ad
 
   - **Apply** › **Confirm**
 
-- [ ] **7. Deploy den ferdige pakken** (fra jobb-PC-en på bedriftsnettet)
+- [ ] **7. Deploy den ferdige pakken** (fra nettleseren, på bedriftsnettet)
 
-  Du trenger **ikke** Node, npm eller Git. Funksjonen er bygget ferdig, med alt den trenger, i én zip-fil. Du trenger bare **Azure CLI**. Den er ikke Node-basert, og ligger ofte i Firmaportal eller Software Center.
+  Du trenger ingen verktøy på PC-en. Funksjonen er bygget ferdig i én zip-fil, som lastes opp der Function App-en henter koden sin.
 
-  a. **Last ned pakken:** [`AssessmentVisual/dist/MasterTable-function.zip`](AssessmentVisual/dist/MasterTable-function.zip) › nedlastingsikonet. Lagre den f.eks. i `Nedlastinger`.
+  a. **Last ned** [`AssessmentVisual/dist/MasterTable-function.zip`](AssessmentVisual/dist/MasterTable-function.zip) (nedlastingsikonet)
 
-  b. **Finn resource group** for appen: `func-powerbiwriteback` › **Overview** › *Resource group*
+  b. **Gi filen nytt navn** i Filutforsker: `released-package.zip`. Ligger det allerede en zip-fil i containeren (punkt d), bruker du nøyaktig det navnet.
 
-  c. **Sjekk at Azure CLI finnes:** `az --version`. Får du feil, installer [Azure CLI](https://aka.ms/installazurecliwindows) eller be IT om det.
+  c. **Finn deploy-containeren:** `func-powerbiwriteback` › **Settings › Deployment settings** › noter *Storage account* og *Container* (`app-package-func-powerbiwriteback-06940e7`)
 
-  d. **Logg inn og deploy**, én kommando om gangen:
-  ```powershell
-  az login
-  ```
-  ```powershell
-  az functionapp deployment source config-zip --resource-group <resource-group> --name func-powerbiwriteback --src "$HOME\Downloads\MasterTable-function.zip"
-  ```
-  - `az login` åpner nettleseren. Logg inn med jobbkontoen og godkjenn MFA.
-  - Deployen tar 1–3 minutter
+  d. **Last opp:** åpne Storage-kontoen › **Storage browser** › **Blob containers** › klikk på containeren › **Upload** › velg filen › huk av **Overwrite if files already exist** › **Upload**
+  - Krever skrivetilgang (*Storage Blob Data Contributor*). Står det en melding om tilgang, klikk *Switch to Microsoft Entra user account*.
 
-  Alternativ uten noe på jobb-PC-en: logg inn på en VM i VNet-et via **Bastion** og kjør de samme kommandoene der. Eller be IT kjøre kommandoen for deg med zip-filen.
+  e. **Start på nytt:** `func-powerbiwriteback` › **Overview** › **Restart** › vent 2–3 minutter
+
+  Med Azure CLI (alternativ): `az functionapp deployment source config-zip --resource-group <rg> --name func-powerbiwriteback --src MasterTable-function.zip`
 
 - [ ] **8. Sjekk at funksjonen er deployet**
   - Function App › **Overview** › *Functions*: `saveAssessment` skal vises
