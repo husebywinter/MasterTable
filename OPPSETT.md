@@ -14,7 +14,7 @@ nettet ─▶ Power BI ─▶ visual ─(https, privat DNS)─▶ pe-funcpowerbi
 | Del | Status |
 |---|---|
 | VNet, subnett, private endpoints og DNS | ✅ Finnes allerede |
-| Function App (`…powerbiwriteback`) med VNet-integrasjon | ✅ Finnes allerede. Den er laget for dette. |
+| Function App `func-powerbiwriteback` med VNet-integrasjon | ✅ Finnes allerede. Den er laget for dette. |
 | Storage for funksjonen (`pe-sapowerwriteback.blob`) | ✅ Finnes allerede |
 | Tabellene i databasen | Del A |
 | Koden i Function App-en | Del B |
@@ -32,16 +32,17 @@ nettet ─▶ Power BI ─▶ visual ─(https, privat DNS)─▶ pe-funcpowerbi
 | SQL-server | – | `sql-powerbiwriteback.database.windows.net` |
 | Database | – | `sqldb-powerbiwriteback` |
 | VNet | – | `vnet-swedencentral-azfw-subs-mc-corp-powerbi-tools-prod` (Sweden Central) |
-| **Function App-navn** | Søk etter `powerbiwriteback` i portalen › ressursen av typen *Function App* | |
+| **Function App-navn** | – | `func-powerbiwriteback` |
+| **Function App-adresse** | Function App › *Overview* › *Default domain* | `func-powerbiwriteback-cjgbb5gbfkh4gzad.swedencentral-01.azurewebsites.net` |
 | **Maskin på nettverket** | Jobb-PC på bedriftsnettet eller VPN, eller en VM via Bastion (`AzureBastionSubnet` finnes) | |
 | **Gateway** | app.powerbi.com › tannhjulet › *Administrer tilkoblinger og gatewayer*, eller spør Power BI-admin | |
 
 Alt under gjøres fra en maskin **på bedriftsnettet**.
 
-**Test nettverket først.** Kjør i PowerShell (bytt inn navnet på Function App-en):
+**Test nettverket først.** Kjør i PowerShell:
 ```powershell
 Resolve-DnsName sql-powerbiwriteback.database.windows.net
-Resolve-DnsName <function-app-navn>.azurewebsites.net
+Resolve-DnsName func-powerbiwriteback-cjgbb5gbfkh4gzad.swedencentral-01.azurewebsites.net
 ```
 Begge skal gi `…privatelink…` og en `10.x.x.x`-adresse. Ser du offentlige adresser, er du ikke på nettet, eller så mangler DNS. Kontakt IT.
 
@@ -78,10 +79,10 @@ Begge skal gi `…privatelink…` og en `10.x.x.x`-adresse. Ser du offentlige ad
 - [ ] **5. Gi funksjonen tilgang til databasen**
   - I VS Code (koblet til som i steg 1), kjør dette. Bytt ut navnet med det eksakte navnet på Function App-en.
     ```sql
-    CREATE USER [<function-app-navn>] FROM EXTERNAL PROVIDER;
-    ALTER ROLE db_datareader ADD MEMBER [<function-app-navn>];
-    ALTER ROLE db_datawriter ADD MEMBER [<function-app-navn>];
-    GRANT EXECUTE ON dbo.usp_SaveAssessments TO [<function-app-navn>];
+    CREATE USER [func-powerbiwriteback] FROM EXTERNAL PROVIDER;
+    ALTER ROLE db_datareader ADD MEMBER [func-powerbiwriteback];
+    ALTER ROLE db_datawriter ADD MEMBER [func-powerbiwriteback];
+    GRANT EXECUTE ON dbo.usp_SaveAssessments TO [func-powerbiwriteback];
     ```
   - Får du en feil om tilgang, må Entra-admin på SQL-serveren kjøre dette
 
@@ -111,7 +112,7 @@ Begge skal gi `…privatelink…` og en `10.x.x.x`-adresse. Ser du offentlige ad
   cd MasterTable\AzureFunction
   npm install
   az login
-  func azure functionapp publish <function-app-navn>
+  func azure functionapp publish func-powerbiwriteback
   ```
   - `az login` åpner nettleseren. Logg inn med jobbkontoen og godkjenn MFA.
   - Når deployen er ferdig, står det `saveAssessment - [httpTrigger]` med URL-en
@@ -124,7 +125,7 @@ Begge skal gi `…privatelink…` og en `10.x.x.x`-adresse. Ser du offentlige ad
 
 - [ ] **9. Hent function key**
   - **Functions › App keys** › kopier `default`
-  - URL: `https://<function-app-navn>.azurewebsites.net/api/assessment/save`
+  - URL: `https://func-powerbiwriteback-cjgbb5gbfkh4gzad.swedencentral-01.azurewebsites.net/api/assessment/save`
 
 ---
 
@@ -190,7 +191,7 @@ Power BI Service står utenfor nettverket og trenger en gateway for å lese `vw_
 
   | Innstilling | Verdi |
   |---|---|
-  | Function URL | `https://<function-app-navn>.azurewebsites.net/api/assessment/save` |
+  | Function URL | `https://func-powerbiwriteback-cjgbb5gbfkh4gzad.swedencentral-01.azurewebsites.net/api/assessment/save` |
   | Function key | nøkkelen fra steg 9 |
   | Kontekst | `Test` (bytt til f.eks. `Ratejustering` for ekte data) |
 
@@ -219,7 +220,7 @@ Power BI Service står utenfor nettverket og trenger en gateway for å lese `vw_
 | Symptom | Årsak | Løsning |
 |---|---|---|
 | `Resolve-DnsName` gir offentlig IP | Ikke på bedriftsnettet, eller DNS mangler | Koble til VPN. Kontakt IT. |
-| `func … publish` feiler med 403 eller timeout | Maskinen når ikke Function App-ens private endpoint | Kjør fra bedriftsnettet eller VM-en. Sjekk `Resolve-DnsName <app>.azurewebsites.net`. |
+| `func … publish` feiler med 403 eller timeout | Maskinen når ikke Function App-ens private endpoint | Kjør fra bedriftsnettet eller VM-en. Sjekk `Resolve-DnsName func-powerbiwriteback-cjgbb5gbfkh4gzad.swedencentral-01.azurewebsites.net`. |
 | Visualen: «Fikk ikke kontakt med Function App» | Brukeren er ikke på nettet, feil URL, eller funksjonen er ikke deployet | VPN, steg 8 og steg 20 |
 | Visualen: «Ingen tilgang (401)» | Feil function key | Steg 9 og 20 |
 | Visualen: «Database error» | Funksjonen kommer ikke inn i databasen | Se loggen: Function App › *Monitoring › Log stream* |

@@ -4,7 +4,7 @@
         "displayName": "Vurderingstabell",
         "guid": "assessmentVisualB219162BD5A943FD850AB550CEB01817",
         "visualClassName": "Visual",
-        "version": "1.0.0.0",
+        "version": "1.0.1.0",
         "description": "Tabell med kategori og kommentar per rad, lagret til Azure SQL via Azure Function",
         "supportUrl": "https://aka.ms/pbivisuals",
         "gitHubUrl": ""
@@ -22,5 +22,5 @@
     "capabilities": "capabilities.json",
     "dependencies": null,
     "stringResources": [],
-    "version": "1.0.0.0"
+    "version": "1.0.1.0"
 }

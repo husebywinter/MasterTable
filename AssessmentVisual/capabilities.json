@@ -41,26 +41,64 @@
         {
             "conditions": [
                 {
-                    "key": { "max": 3 },
-                    "details": { "max": 5 },
-                    "values": { "max": 10 },
-                    "category": { "max": 1 },
-                    "comment": { "max": 1 },
-                    "user": { "max": 1 }
+                    "key": {
+                        "max": 3
+                    },
+                    "details": {
+                        "max": 5
+                    },
+                    "values": {
+                        "max": 10
+                    },
+                    "category": {
+                        "max": 1
+                    },
+                    "comment": {
+                        "max": 1
+                    },
+                    "user": {
+                        "max": 1
+                    }
                 }
             ],
             "table": {
                 "rows": {
                     "select": [
-                        { "for": { "in": "key" } },
-                        { "for": { "in": "details" } },
-                        { "for": { "in": "values" } },
-                        { "for": { "in": "category" } },
-                        { "for": { "in": "comment" } },
-                        { "for": { "in": "user" } }
+                        {
+                            "for": {
+                                "in": "key"
+                            }
+                        },
+                        {
+                            "for": {
+                                "in": "details"
+                            }
+                        },
+                        {
+                            "for": {
+                                "in": "values"
+                            }
+                        },
+                        {
+                            "for": {
+                                "in": "category"
+                            }
+                        },
+                        {
+                            "for": {
+                                "in": "comment"
+                            }
+                        },
+                        {
+                            "for": {
+                                "in": "user"
+                            }
+                        }
                     ],
                     "dataReductionAlgorithm": {
-                        "window": { "count": 10000 }
+                        "window": {
+                            "count": 10000
+                        }
                     }
                 }
             }
@@ -69,20 +107,60 @@
     "objects": {
         "writeBack": {
             "properties": {
-                "endpoint": { "type": { "text": true } },
-                "functionKey": { "type": { "text": true } },
-                "context": { "type": { "text": true } },
-                "refreshAfterSave": { "type": { "bool": true } }
+                "endpoint": {
+                    "type": {
+                        "text": true
+                    }
+                },
+                "functionKey": {
+                    "type": {
+                        "text": true
+                    }
+                },
+                "context": {
+                    "type": {
+                        "text": true
+                    }
+                },
+                "refreshAfterSave": {
+                    "type": {
+                        "bool": true
+                    }
+                }
             }
         },
         "table": {
             "properties": {
-                "title": { "type": { "text": true } },
-                "fontSize": { "type": { "numeric": true } },
-                "categories": { "type": { "text": true } },
-                "categoryHeader": { "type": { "text": true } },
-                "commentHeader": { "type": { "text": true } },
-                "colorCategories": { "type": { "bool": true } }
+                "title": {
+                    "type": {
+                        "text": true
+                    }
+                },
+                "fontSize": {
+                    "type": {
+                        "numeric": true
+                    }
+                },
+                "categories": {
+                    "type": {
+                        "text": true
+                    }
+                },
+                "categoryHeader": {
+                    "type": {
+                        "text": true
+                    }
+                },
+                "commentHeader": {
+                    "type": {
+                        "text": true
+                    }
+                },
+                "colorCategories": {
+                    "type": {
+                        "bool": true
+                    }
+                }
             }
         }
     },
@@ -92,6 +170,8 @@
             "essential": true,
             "parameters": [
                 "https://*.azurewebsites.net",
+                "https://*.swedencentral-01.azurewebsites.net",
+                "https://func-powerbiwriteback-cjgbb5gbfkh4gzad.swedencentral-01.azurewebsites.net",
                 "http://localhost:7071"
             ]
         },
