@@ -1,137 +1,182 @@
-# Oppsett – sjekkliste (rett i skyen)
+# Oppsett – sjekkliste (Azure SQL med private endpoint)
 
-Alt gjøres i **Azure-portalen**, på **GitHub** og i **Power BI**. Du trenger ikke kjøre noe lokalt, ingen `az login`, `func start` eller Node på PC-en. Det eneste du installerer, er **Power BI Desktop**, for å bygge rapporten før den publiseres.
-
-Innlogging skjer med jobbkontoen din og MFA. I drift skriver Azure-funksjonen til databasen med sin egen identitet (managed identity), så det finnes ingen passord noe sted.
+Databasen er bare tilgjengelig fra et privat nettverk (VNet) i Azure. Derfor må alt som skal snakke med databasen, være koblet til det nettverket:
 
 ```
-Bruker ─(Power BI-innlogging)─▶ Power BI Service ─▶ visual ─(function key)─▶ Azure Function ─(managed identity)─▶ Azure SQL
-                                       └──────────── DirectQuery (lagret innlogging) ──────────────────────────────────┘
+                                    ┌──────────── VNet ─────────────────────────────┐
+Bruker ─▶ Power BI Service ─▶ visual ─(https + function key)─▶ Azure Function ─(VNet-integrasjon)─▶ private endpoint ─▶ Azure SQL
+               │                    │                                                    ▲
+               └─(DirectQuery)─▶ Gateway (VNet data gateway eller VM) ────────────────────┘
+                                    └───────────────────────────────────────────────┘
 ```
+
+| Del | Hvordan den når databasen |
+|---|---|
+| **Visualen** | Snakker aldri med databasen. Den kaller bare funksjonen over https, så den trenger ingen endring. |
+| **Azure Function** (lagring) | VNet-integrasjon og privat DNS. Logger inn med managed identity. |
+| **Power BI Service** (visning) | Gateway inn i VNet-et |
+| **Du** (oppsett, Power BI Desktop) | Fra en maskin på nettverket: jobb-PC med VPN, eller en VM i Azure |
+
+Query editor i Azure-portalen virker **ikke** mot en database med bare privat tilgang. Skriptet kjøres derfor fra VS Code eller SSMS på en maskin som er på nettverket.
 
 ---
 
 ## Informasjon du trenger
 
-| Hva | Verdi |
-|---|---|
-| SQL-server | `sql-powerbiwriteback.database.windows.net` |
-| Database | `sqldb-powerbiwriteback` |
-| Function App-navn | Velger du selv i steg 5, f.eks. `func-mastertable` |
-| GitHub-repo | `husebywinter/MasterTable` |
+Mye av dette må du sannsynligvis få fra IT eller den som eier Azure-oppsettet.
 
-Kontoen din må kunne logge inn på databasen med Entra ID. Den må også ha rettigheter til å lage tabeller, f.eks. som Entra-admin på SQL-serveren eller med `db_owner`.
-
----
-
-## Del A – Lag tabellene (Azure-portalen, ca. 5 min)
-
-- [ ] **1. Åpne Query editor**
-  - [portal.azure.com](https://portal.azure.com) › **SQL databases** › `sqldb-powerbiwriteback` › **Query editor (preview)** i menyen til venstre
-  - Velg **Continue as <din konto>**, som bruker Entra-innloggingen med MFA
-  - Får du melding om IP-adressen: klikk **Allowlist IP …** og logg inn på nytt
-
-- [ ] **2. Kjør skriptet**
-  - Åpne [`database/assessment_portal.sql`](database/assessment_portal.sql) på GitHub, klikk **Raw** og kopier alt
-  - Lim det inn i Query editor og klikk **Run**
-  - Nederst skal du få 3 rader: *Justert*, *Ikke justert* og *Kan ikke justeres*
-  - Denne versjonen av skriptet er laget for portalen og har ingen `GO`-linjer. Den gjør det samme som `assessment.sql`.
-
-- [ ] **3. (Valgfritt) Legg inn dummy-vurderinger**
-  - Gjør det samme med [`AssessmentVisual/dist/Dummydata_vurderinger.sql`](AssessmentVisual/dist/Dummydata_vurderinger.sql)
-  - Det gir 10 vurderinger med Kontekst `Test`. Slette dem igjen: `DELETE dbo.Assessment WHERE Context = N'Test';`
-
-- [ ] **4. Gi Azure-tjenester tilgang til SQL-serveren**
-  - Portalen › SQL-serveren `sql-powerbiwriteback` › **Networking**
-  - Huk av **Allow Azure services and resources to access this server** › **Save**
-  - Både funksjonen og Power BI Service trenger dette
+| Hva | Hvor finner jeg det | Ditt |
+|---|---|---|
+| SQL-server | – | `sql-powerbiwriteback.database.windows.net` |
+| Database | – | `sqldb-powerbiwriteback` |
+| **VNet** som private endpoint ligger i | SQL-serveren › *Security › Networking* › fanen *Private access* › klikk på endpointen › *Virtual network/subnet* | |
+| **Ledig subnett for Function App-en** | Må lages, se steg 4 | |
+| **Privat DNS-sone** `privatelink.database.windows.net` koblet til VNet-et | Portalen › *Private DNS zones*. Den lages vanligvis sammen med private endpoint. | |
+| **Tilgang til nettverket** for deg | VPN-klient på jobb-PC, eller en VM i VNet-et | |
+| **Gateway-type** | Har organisasjonen Fabric/Premium-kapasitet? Finnes det en gateway fra før? Spør Power BI-admin. | |
+| Function App-navn | Velger du selv i steg 5 | |
 
 ---
 
-## Del B – Azure Function (portal og GitHub, ca. 20 min)
+## Del A – Lag tabellene (fra en maskin på nettverket)
+
+- [ ] **1. Koble til nettverket**
+  - Jobb-PC: koble til VPN. Eller logg inn på en VM i VNet-et.
+  - Sjekk at servernavnet peker på en privat adresse. Kjør i PowerShell:
+    ```powershell
+    Resolve-DnsName sql-powerbiwriteback.database.windows.net
+    ```
+    Du skal se `…privatelink.database.windows.net` og en IP-adresse som `10.x.x.x`. Ser du en offentlig adresse, er ikke DNS satt opp for maskinen din. Spør IT.
+
+- [ ] **2. Kjør skriptet i VS Code**
+  - Installer utvidelsen **SQL Server (mssql)** i VS Code
+  - Last ned [`database/assessment.sql`](database/assessment.sql) fra GitHub, eller klon repoet
+  - Velg SQL Server-ikonet › **Add Connection**:
+    - Server: `sql-powerbiwriteback.database.windows.net`, database: `sqldb-powerbiwriteback`
+    - Authentication type: **Microsoft Entra ID – Universal with MFA support**
+  - Åpne `assessment.sql` og trykk **Ctrl+Shift+E**
+  - Sjekk at det virket: `SELECT * FROM dbo.AssessmentCategory;` skal gi *Justert*, *Ikke justert* og *Kan ikke justeres*
+  - (Valgfritt) Kjør [`AssessmentVisual/dist/Dummydata_vurderinger.sql`](AssessmentVisual/dist/Dummydata_vurderinger.sql) for å få 10 testvurderinger
+
+- [ ] **3. Mangler du tilgang til nettverket?**
+  - Be IT kjøre `assessment.sql` for deg, eller midlertidig åpne *Public access › Selected networks* for IP-adressen din
+  - I det siste tilfellet kan du bruke Query editor i portalen med [`assessment_portal.sql`](database/assessment_portal.sql)
+
+---
+
+## Del B – Azure Function med VNet-integrasjon
+
+- [ ] **4. Lag et subnett til funksjonen** (IT gjør ofte dette)
+  - Portalen › VNet-et › **Subnets** › **+ Subnet**
+  - Navn: f.eks. `snet-func-mastertable`, størrelse minst `/27`
+  - **Subnet delegation:** `Microsoft.App/environments`, som Flex Consumption krever
+  - Subnettet kan ikke brukes til andre ting
 
 - [ ] **5. Lag Function App**
-  - Portalen › **Create a resource** › **Function App** › **Flex Consumption** › *Select*
-  - Velg samme **Subscription** og **Resource group** som databasen
-  - **Function App name:** f.eks. `func-mastertable`
-  - **Region:** samme som databasen
-  - **Runtime stack:** Node.js, **Version:** 22 LTS
-  - Klikk **Review + create** › **Create**, og vent til den er ferdig
-  - Bruk **ikke** samme Function App som Planning Grid. Deploy erstatter alle funksjonene i appen.
+  - Portalen › **Create a resource** › **Function App** › **Flex Consumption**
+  - Samme subscription og region som VNet-et. Runtime: **Node.js 22 LTS**. Navn: f.eks. `func-mastertable`
+  - Fanen **Networking**:
+    - **Enable public access: On.** Visualen kaller funksjonen fra nettleseren til brukerne, så funksjonen må kunne nås utenfra. Den er beskyttet med function key.
+    - **Enable virtual network integration: On** › velg VNet-et og subnettet fra steg 4
+  - **Review + create** › **Create**
+  - Bruk ikke samme Function App som Planning Grid
 
-- [ ] **6. Slå på managed identity**
-  - Function App › **Settings › Identity** › fanen *System assigned* › **Status: On** › **Save** › **Yes**
+- [ ] **6. Sjekk privat DNS**
+  - Portalen › **Private DNS zones** › `privatelink.database.windows.net` › **Virtual network links**
+  - VNet-et fra steg 5 må stå i listen. Mangler det: **+ Add** › velg VNet-et
+  - Uten denne koblingen prøver funksjonen å bruke den offentlige adressen og blir avvist
 
-- [ ] **7. Gi funksjonen tilgang til databasen**
-  - Tilbake i Query editor (steg 1), kjør dette. Bytt ut `func-mastertable` med navnet fra steg 5.
+- [ ] **7. Slå på managed identity**
+  - Function App › **Settings › Identity** › *System assigned* › **On** › **Save**
+
+- [ ] **8. Gi funksjonen tilgang til databasen**
+  - I VS Code (koblet til som i steg 2), kjør dette. Bytt ut navnet med Function App-navnet.
     ```sql
     CREATE USER [func-mastertable] FROM EXTERNAL PROVIDER;
     ALTER ROLE db_datareader ADD MEMBER [func-mastertable];
     ALTER ROLE db_datawriter ADD MEMBER [func-mastertable];
     GRANT EXECUTE ON dbo.usp_SaveAssessments TO [func-mastertable];
     ```
-  - Får du en feil om tilgang, må Entra-admin på SQL-serveren kjøre dette
 
-- [ ] **8. Fortell funksjonen hvilken database den skal bruke**
-  - Function App › **Settings › Environment variables** › **+ Add**, to ganger:
+- [ ] **9. Sett server og database**
+  - Function App › **Settings › Environment variables** › **+ Add**:
 
     | Name | Value |
     |---|---|
     | `SQL_SERVER` | `sql-powerbiwriteback.database.windows.net` |
     | `SQL_DATABASE` | `sqldb-powerbiwriteback` |
 
-  - Klikk **Apply** › **Confirm**
+  - **Apply** › **Confirm**
 
-- [ ] **9. Koble Function App til GitHub**
-  - Function App › **Deployment › Deployment Center**
-  - **Source:** GitHub › logg inn og gi tilgang
-  - **Organization:** `husebywinter`, **Repository:** `MasterTable`, **Branch:** `main`
-  - **Authentication type:** *User-assigned identity* (standard)
-  - Klikk **Save**. Azure legger da en workflow-fil i repoet, under `.github/workflows/`.
+- [ ] **10. Koble til GitHub**
+  - Function App › **Deployment › Deployment Center** › **Source: GitHub**
+  - Organization `husebywinter`, repository `MasterTable`, branch `main`, authentication *User-assigned identity* › **Save**
 
-- [ ] **10. Pek workflowen mot riktig mappe**
-  - Funksjonen ligger i mappen `AzureFunction`, ikke i roten av repoet
-  - På GitHub: åpne filen i `.github/workflows/` › blyant-ikonet (Edit)
-  - Finn linjen `AZURE_FUNCTIONAPP_PACKAGE_PATH: '.'` og endre den til:
-    ```yaml
-    AZURE_FUNCTIONAPP_PACKAGE_PATH: 'AzureFunction'
-    ```
-  - **Commit changes**. Deployen starter automatisk.
+- [ ] **11. Pek workflowen mot riktig mappe**
+  - På GitHub: åpne filen i `.github/workflows/` › **Edit**
+  - Endre `AZURE_FUNCTIONAPP_PACKAGE_PATH: '.'` til `AZURE_FUNCTIONAPP_PACKAGE_PATH: 'AzureFunction'` › **Commit changes**
+  - Du kan også si fra, så gjør jeg det
 
-- [ ] **11. Sjekk at deployen gikk bra**
-  - GitHub › fanen **Actions**: den siste kjøringen skal få grønn hake (ca. 2–3 min)
-  - Function App › **Overview** › nederst under *Functions* skal `saveAssessment` vises
+- [ ] **12. Sjekk deploy**
+  - GitHub › **Actions**: den siste kjøringen skal få grønn hake
+  - Function App › **Overview** › *Functions*: `saveAssessment` skal vises
 
-- [ ] **12. Hent function key**
-  - Function App › **Functions › App keys** › kopier verdien til `default`
-  - Function URL blir: `https://func-mastertable.azurewebsites.net/api/assessment/save` (med ditt navn)
+- [ ] **13. Hent function key**
+  - Function App › **Functions › App keys** › kopier `default`
+  - URL: `https://<function-app-navn>.azurewebsites.net/api/assessment/save`
 
 ---
 
-## Del C – Bygg rapporten (Power BI Desktop, ca. 15 min)
+## Del C – Gateway for Power BI Service
 
-Desktop brukes bare til å lage rapporten. Lagringen går mot funksjonen i Azure fra første stund.
+Velg **én** av de to løsningene. Spør Power BI-admin om det allerede finnes en gateway.
 
-- [ ] **13. Last ned filene**
-  - Fra GitHub, mappen [`AssessmentVisual/dist`](AssessmentVisual/dist): `assessmentVisual….pbiviz` og `Dummydata.xlsx` (klikk filen › nedlastingsikonet)
+### Alternativ 1: VNet data gateway (krever Fabric- eller Premium-kapasitet)
 
-- [ ] **14. Last inn testdata**
-  - **Hjem › Excel-arbeidsbok** › `Dummydata.xlsx` › huk av **Prosjekter** › **Last inn**
+- [ ] **14a. Lag et subnett til gatewayen**
+  - VNet › **Subnets** › **+ Subnet**, f.eks. `snet-pbi-gateway`
+  - **Subnet delegation:** `Microsoft.PowerPlatform/vnetaccesslinks`
+  - Ressursleverandøren `Microsoft.PowerPlatform` må være registrert i subscriptionen (*Subscription › Resource providers*)
 
-- [ ] **15. Koble til databasen**
-  - **Hent data › Azure SQL-database**
-  - Server `sql-powerbiwriteback.database.windows.net`, database `sqldb-powerbiwriteback`, velg **DirectQuery**
-  - Innlogging: **Microsoft-konto** › **Logg på** (MFA) › **Koble til**
-  - Huk av `vw_Assessment` › **Last inn**
+- [ ] **15a. Lag gatewayen**
+  - app.powerbi.com › tannhjulet › **Administrer tilkoblinger og gatewayer** › fanen **Virtuelle nettverksdatagatewayer** › **+ Ny**
+  - Velg subscription, VNet og subnettet fra 14a › **Lagre**
 
-- [ ] **16. Nøkkelkolonne og relasjon**
-  - Høyreklikk `Prosjekter` › **Ny kolonne**:
-    ```DAX
-    RowKey = Prosjekter[Prosjekt] & "|" & Prosjekter[År]
-    ```
-  - **Modellvisning**: dra `Prosjekter[RowKey]` over til `vw_Assessment[RowKey]`. Relasjonen skal være én (Prosjekter) til mange.
+- [ ] **16a. Lag tilkoblingen**
+  - Samme sted › fanen **Tilkoblinger** › **+ Ny** › **Virtuelt nettverk** › gatewayen fra 15a
+  - Type **SQL Server**, server `sql-powerbiwriteback.database.windows.net`, database `sqldb-powerbiwriteback`
+  - Godkjenning: **OAuth 2.0** › logg på (MFA). På sikt: bytt til en service principal.
 
-- [ ] **17. To mål** (høyreklikk `Prosjekter` › **Nytt mål**)
+### Alternativ 2: On-premises data gateway på en VM i VNet-et
+
+- [ ] **14b. VM**
+  - En Windows-VM i VNet-et, som kan nå SQL-serveren (sjekk med `Resolve-DnsName` som i steg 1)
+
+- [ ] **15b. Installer gatewayen**
+  - Last ned *On-premises data gateway (standard mode)* fra Microsoft på VM-en, installer og logg inn med jobbkontoen
+  - Gi gatewayen et navn og en gjenopprettingsnøkkel. Ta vare på nøkkelen.
+
+- [ ] **16b. Lag tilkoblingen**
+  - app.powerbi.com › **Administrer tilkoblinger og gatewayer** › **Tilkoblinger** › **+ Ny** › **Lokalt** › gatewayen fra 15b
+  - Type **SQL Server**, server og database som over, godkjenning **OAuth 2.0** eller service principal
+
+---
+
+## Del D – Rapporten (Power BI Desktop, på nettverket)
+
+Power BI Desktop må også nå databasen. Jobb derfor med VPN tilkoblet, eller fra VM-en.
+
+- [ ] **17. Last ned** `assessmentVisual….pbiviz` og `Dummydata.xlsx` fra [`AssessmentVisual/dist`](AssessmentVisual/dist)
+
+- [ ] **18. Testdata:** **Hjem › Excel-arbeidsbok** › `Dummydata.xlsx` › **Prosjekter** › **Last inn**
+
+- [ ] **19. Database:** **Hent data › Azure SQL-database** › server og database › **DirectQuery** › **Microsoft-konto** (MFA) › `vw_Assessment` › **Last inn**
+
+- [ ] **20. Nøkkel og relasjon**
+  - Ny kolonne i `Prosjekter`: `RowKey = Prosjekter[Prosjekt] & "|" & Prosjekter[År]`
+  - **Modellvisning**: dra `Prosjekter[RowKey]` over til `vw_Assessment[RowKey]` (én til mange)
+
+- [ ] **21. Mål** i `Prosjekter`:
   ```DAX
   Kategori = MAX(vw_Assessment[Category])
   ```
@@ -142,57 +187,41 @@ Desktop brukes bare til å lage rapporten. Lagringen går mot funksjonen i Azure
   User = USERPRINCIPALNAME()
   ```
 
-- [ ] **18. Importer visualen**
-  - Visualiseringer-panelet › **…** › **Importer et visualobjekt fra en fil** › `.pbiviz`-filen
-  - Klikk på det nye ikonet, slik at visualen havner på siden
+- [ ] **22. Visual:** Visualiseringer › **…** › **Importer et visualobjekt fra en fil** › `.pbiviz`
 
-- [ ] **19. Legg inn feltene**
+- [ ] **23. Felter**
 
   | Feltboks | Dra inn |
   |---|---|
   | Radnøkkel | `Prosjekt`, deretter `År` |
   | Infokolonner | `Prosjektnavn`, `Segment` |
-  | Verdier | `Timepris`, `Endring`, `Timer` (velg **Sum** hvis det står Antall) |
+  | Verdier | `Timepris`, `Endring`, `Timer` (Sum) |
   | Kategori (lagret) | `Kategori` |
   | Kommentar (lagret) | `Kommentar` |
   | Bruker | `User` |
 
-  - Høyreklikk `Prosjekt` i Radnøkkel-boksen og velg **Vis elementer uten data**
+  - Høyreklikk `Prosjekt` i Radnøkkel og velg **Vis elementer uten data**
 
-- [ ] **20. Write-back-innstillinger** (Format › Write-back)
+- [ ] **24. Write-back** (Format › Write-back): Function URL og function key fra steg 13, Kontekst `Test`
 
-  | Innstilling | Verdi |
-  |---|---|
-  | Function URL | `https://<function-app-navn>.azurewebsites.net/api/assessment/save` |
-  | Function key | nøkkelen fra steg 12 |
-  | Kontekst | `Test` (bytt til f.eks. `Ratejustering` når du går over til ekte data) |
+- [ ] **25. Test i Desktop:** velg kategori › lagre › «Lagret kl. …»
 
-- [ ] **21. Test i Desktop**
-  - Velg en kategori › diskett-ikonet › det skal stå «Lagret kl. …»
-
-- [ ] **22. Publiser**
-  - **Hjem › Publiser** › velg workspace
+- [ ] **26. Publiser:** **Hjem › Publiser** › workspace
 
 ---
 
-## Del D – Power BI Service (ca. 5 min)
+## Del E – Power BI Service
 
-- [ ] **23. Sett innloggingen for databasen**
-  - app.powerbi.com › workspacet › den semantiske modellen › **…** › **Innstillinger**
-  - **Datakildelegitimasjon** › Azure SQL › **Rediger legitimasjon** › **OAuth2** › logg på (MFA)
-  - **Ikke** huk av for SSO (*Sluttbrukere bruker egen OAuth2-legitimasjon …*)
-  - På sikt: bytt til en service principal, slik at visningen ikke henger på kontoen din
+- [ ] **27. Koble modellen til gatewayen**
+  - Workspacet › den semantiske modellen › **…** › **Innstillinger**
+  - **Gateway- og skytilkoblinger** › velg tilkoblingen fra steg 16a eller 16b for SQL-kilden › **Bruk**
+  - Excel-dataene (dummydata) er importert og trenger ikke gateway før de skal oppdateres
 
-- [ ] **24. Test i Service**
-  - Åpne rapporten, velg en kategori og lagre
+- [ ] **28. Test i Service:** åpne rapporten, lagre en vurdering, og sjekk at verdien blir stående etter oppdatering
 
-- [ ] **25. Del med brukerne**
-  - Lag en **app** fra workspacet, eller gi brukerne **Viewer**-tilgang. Det er alt de trenger for å se og lagre.
+- [ ] **29. Del:** lag en **app** eller gi brukerne **Viewer**-tilgang
 
-- [ ] **26. (Anbefalt) Organisasjonsvisual**
-  - Be en Power BI-admin laste opp `.pbiviz`-filen under **Admin-portal › Organisasjonsvisualer**
-  - Da er visualen godkjent sentralt, og nye versjoner kan rulles ut ett sted
-  - Tenant-innstillingen for egendefinerte visualer må tillate den
+- [ ] **30. (Anbefalt) Organisasjonsvisual:** be Power BI-admin laste opp `.pbiviz`-filen under *Admin-portal › Organisasjonsvisualer*
 
 ---
 
@@ -200,19 +229,20 @@ Desktop brukes bare til å lage rapporten. Lagringen går mot funksjonen i Azure
 
 | Symptom | Årsak | Løsning |
 |---|---|---|
-| GitHub Actions feiler | Feil mappe | Sjekk steg 10: `AZURE_FUNCTIONAPP_PACKAGE_PATH: 'AzureFunction'` |
-| `saveAssessment` vises ikke i Function App | Deployen gikk til feil mappe, eller den har ikke kjørt | Steg 10–11 |
-| «Fikk ikke kontakt med Function App» (i visualen) | Feil URL, eller funksjonen er ikke deployet | Steg 11–12 og 20 |
-| «Ingen tilgang (401)» | Feil eller manglende function key | Steg 12 og 20 |
-| «Database error» (i visualen) | Funksjonen kommer ikke inn i databasen | Sjekk steg 4, 6, 7 og 8. Se loggen under Function App › *Monitoring › Log stream*. |
-| `Login failed for user '<token-identified principal>'` (i loggen) | Funksjonens identitet er ikke bruker i databasen | Steg 7, med nøyaktig samme navn som Function App-en |
-| «Unknown category» | Kategorien finnes ikke i databasen | Samme stavemåte i *Format › Tabell › Kategorier* og i `dbo.AssessmentCategory` |
-| Tabellen i visualen er tom | Ingen rader har vurdering ennå | Steg 19: *Vis elementer uten data* |
-| Lagret, men verdien vises ikke | Relasjonen eller nøkkelen stemmer ikke, eller legitimasjonen mangler i Service | Steg 16 og 23 |
-| Query editor: `CREATE USER … FROM EXTERNAL PROVIDER` feiler | Du er ikke logget inn med Entra, eller mangler rettigheter | Logg inn med *Continue as …*, eller be Entra-admin kjøre det |
+| `Resolve-DnsName` gir offentlig IP | Maskinen bruker ikke den private DNS-sonen | VPN eller DNS-oppsett hos IT |
+| Funksjonsloggen: `Deny Public Network Access is set to Yes` | Funksjonen går ikke via private endpoint | Steg 5 (VNet-integrasjon) og steg 6 (DNS-kobling) |
+| Funksjonsloggen: `Login failed for user '<token-identified principal>'` | Funksjonens identitet er ikke bruker i databasen | Steg 8, med nøyaktig Function App-navn |
+| Funksjonsloggen: timeout eller `ETIMEDOUT` | Subnettet når ikke private endpoint (NSG eller brannmur) | Be IT åpne port 1433 fra funksjonens subnett til private endpoint |
+| Visualen: «Fikk ikke kontakt med Function App» | Funksjonen er ikke deployet, eller public access er av | Steg 5 (*Enable public access: On*) og steg 12 |
+| Visualen: «Ingen tilgang (401)» | Feil function key | Steg 13 og 24 |
+| Lagret, men verdien forsvinner i Service | Modellen når ikke databasen | Steg 27. Sjekk at gateway-tilkoblingen er valgt og har gyldig innlogging. |
+| Desktop får ikke koblet til | Ikke på nettverket | Koble til VPN, eller bruk VM-en |
+| Visualen: «Unknown category» | Kategorien finnes ikke i databasen | Samme stavemåte i *Format › Tabell › Kategorier* og i `dbo.AssessmentCategory` |
+
+Logger for funksjonen: Function App › **Monitoring › Log stream**.
 
 ---
 
 ## Lokal utvikling (valgfritt)
 
-Vil du endre koden og teste uten å deploye, kan funksjonen kjøres lokalt med `func start` og `az login`. Fyll inn `SQL_SERVER` og `SQL_DATABASE` i `AzureFunction/local.settings.json`, og bruk Function URL `http://localhost:7071/api/assessment/save`. Det trengs ikke for vanlig bruk.
+Med VPN tilkoblet kan funksjonen også kjøres lokalt med `func start` og `az login`. Fyll inn `SQL_SERVER` og `SQL_DATABASE` i `AzureFunction/local.settings.json`, og bruk Function URL `http://localhost:7071/api/assessment/save`. Det trengs ikke for vanlig bruk.
