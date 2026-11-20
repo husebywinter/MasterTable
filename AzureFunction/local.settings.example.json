@@ -1,8 +1,10 @@
 {
   "IsEncrypted": false,
   "Values": {
-    "AzureWebJobsStorage": "UseDevelopmentStorage=true",
+    "AzureWebJobsStorage": "",
     "FUNCTIONS_WORKER_RUNTIME": "node",
-    "SQL_CONNECTION_STRING": "Server=tcp:<server>.database.windows.net,1433;Database=<db>;User ID=<user>;Password=<password>;Encrypt=true"
+    "SQL_SERVER": "<server>.database.windows.net",
+    "SQL_DATABASE": "<database>",
+    "SQL_CONNECTION_STRING": ""
   }
 }

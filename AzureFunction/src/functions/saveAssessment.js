@@ -8,11 +8,32 @@ const sql     = require("mssql");
 
 let pool = null;
 
+/**
+ * Two ways to connect:
+ *  - SQL_SERVER + SQL_DATABASE: Microsoft Entra ID, no password. Uses
+ *    DefaultAzureCredential - your `az login` locally, the Function App's
+ *    managed identity in Azure.
+ *  - SQL_CONNECTION_STRING: classic SQL login with user name and password.
+ */
+function connectionConfig() {
+  const server   = process.env.SQL_SERVER?.trim();
+  const database = process.env.SQL_DATABASE?.trim();
+  if (server && database) {
+    return {
+      server: server.replace(/^tcp:/i, "").replace(/,\d+$/, ""),
+      database,
+      authentication: { type: "azure-active-directory-default", options: {} },
+      options: { encrypt: true },
+    };
+  }
+  const connStr = process.env.SQL_CONNECTION_STRING?.trim();
+  if (connStr && !connStr.includes("<server>") && !connStr.includes("YOUR_SERVER")) return connStr;
+  throw new Error("Set SQL_SERVER and SQL_DATABASE (Entra ID) or SQL_CONNECTION_STRING in the application settings.");
+}
+
 async function getPool() {
   if (pool) return pool;
-  const connStr = process.env.SQL_CONNECTION_STRING;
-  if (!connStr) throw new Error("SQL_CONNECTION_STRING is not set in application settings.");
-  pool = await new sql.ConnectionPool(connStr).connect();
+  pool = await new sql.ConnectionPool(connectionConfig()).connect();
   return pool;
 }
 
