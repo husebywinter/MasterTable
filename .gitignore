@@ -1,7 +1,8 @@
 # Dependencies and build output
 node_modules/
 .tmp/
-dist/
+dist/*
+!dist/*.pbiviz
 webpack.statistics.*.html
 
 # Secrets - never commit
