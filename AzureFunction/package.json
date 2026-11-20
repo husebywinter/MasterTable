@@ -1,0 +1,17 @@
+{
+  "name": "assessment-save-function",
+  "version": "1.0.0",
+  "description": "Azure Function - receives category/comment rows from the Vurderingstabell Power BI visual and saves to Azure SQL",
+  "main": "src/functions/*.js",
+  "scripts": {
+    "start": "func start",
+    "build": "echo No build step needed for plain JS"
+  },
+  "dependencies": {
+    "@azure/functions": "^4.5.0",
+    "mssql": "^11.0.1"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

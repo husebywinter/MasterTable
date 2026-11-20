@@ -1,0 +1,15 @@
+# Dependencies and build output
+node_modules/
+.tmp/
+dist/
+webpack.statistics.*.html
+
+# Secrets - never commit
+local.settings.json
+.env
+*.pfx
+certs/
+
+# OS / editor
+.DS_Store
+Thumbs.db

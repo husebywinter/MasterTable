@@ -1,0 +1,8 @@
+{
+    "folders": [
+        { "name": "AssessmentVisual (Power BI)", "path": "AssessmentVisual" },
+        { "name": "AzureFunction", "path": "AzureFunction" },
+        { "name": "database", "path": "database" }
+    ],
+    "settings": {}
+}

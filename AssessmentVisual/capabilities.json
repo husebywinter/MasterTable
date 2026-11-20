@@ -1,0 +1,106 @@
+{
+    "dataRoles": [
+        {
+            "name": "key",
+            "kind": "Grouping",
+            "displayName": "Radnøkkel",
+            "description": "1-3 felt som identifiserer raden og lagres som Key1-Key3, f.eks. Prosjektnummer og År. Vises som kolonner."
+        },
+        {
+            "name": "details",
+            "kind": "Grouping",
+            "displayName": "Infokolonner",
+            "description": "Valgfritt. Tekstkolonner som vises, men ikke er del av nøkkelen, f.eks. Prosjektnavn."
+        },
+        {
+            "name": "values",
+            "kind": "Measure",
+            "displayName": "Verdier",
+            "description": "Valgfritt. Mål som vises som skrivebeskyttede kolonner."
+        },
+        {
+            "name": "category",
+            "kind": "Measure",
+            "displayName": "Kategori (lagret)",
+            "description": "Lagret kategori, f.eks. MAX(vw_Assessment[Category])"
+        },
+        {
+            "name": "comment",
+            "kind": "Measure",
+            "displayName": "Kommentar (lagret)",
+            "description": "Lagret kommentar, f.eks. MAX(vw_Assessment[Comment])"
+        },
+        {
+            "name": "user",
+            "kind": "Measure",
+            "displayName": "Bruker",
+            "description": "Valgfritt. Innlogget bruker for revisjonssporet, f.eks. målet User = USERPRINCIPALNAME()"
+        }
+    ],
+    "dataViewMappings": [
+        {
+            "conditions": [
+                {
+                    "key": { "max": 3 },
+                    "details": { "max": 5 },
+                    "values": { "max": 10 },
+                    "category": { "max": 1 },
+                    "comment": { "max": 1 },
+                    "user": { "max": 1 }
+                }
+            ],
+            "table": {
+                "rows": {
+                    "select": [
+                        { "for": { "in": "key" } },
+                        { "for": { "in": "details" } },
+                        { "for": { "in": "values" } },
+                        { "for": { "in": "category" } },
+                        { "for": { "in": "comment" } },
+                        { "for": { "in": "user" } }
+                    ],
+                    "dataReductionAlgorithm": {
+                        "window": { "count": 10000 }
+                    }
+                }
+            }
+        }
+    ],
+    "objects": {
+        "writeBack": {
+            "properties": {
+                "endpoint": { "type": { "text": true } },
+                "functionKey": { "type": { "text": true } },
+                "context": { "type": { "text": true } },
+                "refreshAfterSave": { "type": { "bool": true } }
+            }
+        },
+        "table": {
+            "properties": {
+                "title": { "type": { "text": true } },
+                "fontSize": { "type": { "numeric": true } },
+                "categories": { "type": { "text": true } },
+                "categoryHeader": { "type": { "text": true } },
+                "commentHeader": { "type": { "text": true } },
+                "colorCategories": { "type": { "bool": true } }
+            }
+        }
+    },
+    "privileges": [
+        {
+            "name": "WebAccess",
+            "essential": true,
+            "parameters": [
+                "https://*.azurewebsites.net",
+                "http://localhost:7071"
+            ]
+        },
+        {
+            "name": "ExportContent",
+            "essential": false
+        }
+    ],
+    "supportsMultiVisualSelection": false,
+    "suppressDefaultTitle": false,
+    "supportsKeyboardFocus": true
+}

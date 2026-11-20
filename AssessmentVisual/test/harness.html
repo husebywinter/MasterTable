@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="nb">
+<head>
+<meta charset="utf-8">
+<title>Vurderingstabell – harness</title>
+<link rel="stylesheet" href="/.tmp/drop/visual.css">
+<style>
+  body { margin: 0; padding: 16px; background: #f3f2f1; font-family: Segoe UI, sans-serif; }
+  #host { width: 1000px; height: 520px; background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,.2); }
+  #log { font: 12px Consolas, monospace; white-space: pre-wrap; margin-top: 12px; max-height: 240px; overflow: auto; }
+  .bar { margin-bottom: 8px; font-size: 13px; }
+</style>
+</head>
+<body>
+<div class="bar">
+  Harness med mock-API (lagrer i minnet).
+  <label><input type="checkbox" id="conflict"> Simuler at en annen bruker endret P-1002 / 2026</label>
+  <label><input type="checkbox" id="noexport"> Simuler blokkert Power BI-eksport</label>
+</div>
+<div id="host"></div>
+<div id="log"></div>
+<script>
+  // Minimal Power BI host. The bundle reads window.powerbi only to register the plugin.
+  window.powerbi = { visuals: { plugins: {} } };
+</script>
+<script src="/.tmp/drop/visual.js"></script>
+<script>
+const log = s => { document.getElementById("log").textContent = s + "\n" + document.getElementById("log").textContent; };
+
+// ── In-memory "database" ──
+const db = new Map([
+  ["P-1001|2026", { category: "Justert", comment: "Avtalt 4,5 % fra 1.1.", modifiedBy: "kari@firma.no" }],
+  ["P-1003|2026", { category: "Kan ikke justeres", comment: "Fastpris ut 2027", modifiedBy: "kari@firma.no" }]
+]);
+const projects = [
+  ["P-1001", "Statens vegvesen – rammeavtale", 1180, 0.045],
+  ["P-1002", "Equinor drift",                 1325, 0.0],
+  ["P-1003", "Oslo kommune – byggeledelse",   990,  0.0],
+  ["P-1004", "Telenor nettverk",              1410, 0.021],
+  ["P-1005", "Bane NOR signal",               1255, 0.0],
+  ["P-1006", "Norsk Hydro",                   1500, 0.06]
+];
+
+function dataView() {
+  const cols = [
+    { displayName: "Prosjekt", roles: { key: true }, rolesIndex: { key: [0] }, type: { text: true } },
+    { displayName: "År", roles: { key: true }, rolesIndex: { key: [1] }, type: { integer: true, numeric: true } },
+    { displayName: "Prosjektnavn", roles: { details: true }, rolesIndex: { details: [0] }, type: { text: true } },
+    { displayName: "Timepris", roles: { values: true }, rolesIndex: { values: [0] }, type: { numeric: true }, format: "#,0" },
+    { displayName: "Endring", roles: { values: true }, rolesIndex: { values: [1] }, type: { numeric: true }, format: "0.0 %" },
+    { displayName: "Kategori", roles: { category: true }, type: { text: true } },
+    { displayName: "Kommentar", roles: { comment: true }, type: { text: true } },
+    { displayName: "User", roles: { user: true }, type: { text: true } }
+  ];
+  const rows = projects.map(([p, name, rate, chg]) => {
+    const s = db.get(p + "|2026");
+    return [p, 2026, name, rate, chg, s?.category ?? null, s?.comment ?? null, "ola@firma.no"];
+  });
+  return [{ metadata: { columns: cols, objects: {
+      writeBack: { endpoint: "https://demo.azurewebsites.net/api/assessment/save", functionKey: "x", context: "Ratejustering" },
+      table: { title: "Ratejustering 2026 – vurdering" } } },
+    table: { columns: cols, rows } }];
+}
+
+// ── Mock Azure Function ──
+window.fetch = async (url, init) => {
+  const body = JSON.parse(init.body);
+  log("POST " + url.split("?")[0] + "\n" + JSON.stringify(body, null, 1));
+  if (document.getElementById("conflict").checked) {
+    document.getElementById("conflict").checked = false;
+    db.set("P-1002|2026", { category: "Ikke justert", comment: "Venter på kunde", modifiedBy: "per@firma.no" });
+  }
+  const same = (a, b) => (a ?? null) === (b ?? null);
+  const conflicts = [];
+  for (const r of body.rows) {
+    const cur = db.get(r.keys.join("|"));
+    const okOrig = same(cur?.category, r.originalCategory) && same(cur?.comment, r.originalComment);
+    const okNew = same(cur?.category, r.category) && same(cur?.comment, r.comment);
+    if (!okOrig && !okNew) conflicts.push({ keys: r.keys, category: cur?.category ?? null, comment: cur?.comment ?? null,
+      modifiedBy: cur?.modifiedBy ?? null, modifiedAt: new Date().toISOString() });
+  }
+  if (conflicts.length) return new Response(JSON.stringify({ status: "conflict", conflicts }), { status: 409 });
+  let ins = 0, upd = 0, del = 0;
+  for (const r of body.rows) {
+    const k = r.keys.join("|");
+    if (r.category === null && r.comment === null) { if (db.delete(k)) del++; }
+    else { db.has(k) ? upd++ : ins++; db.set(k, { category: r.category, comment: r.comment, modifiedBy: body.user }); }
+  }
+  return new Response(JSON.stringify({ status: "saved", inserted: ins, updated: upd, deleted: del, savedAt: new Date().toISOString() }));
+};
+
+const plugin = Object.values(window.powerbi.visuals.plugins)[0];
+let visual;
+const host = {
+  locale: "nb-NO",
+  createSelectionManager: () => ({ showContextMenu() {} }),
+  eventService: { renderingStarted() {}, renderingFinished() {}, renderingFailed(o, e) { log("FAILED " + e); } },
+  fetchMoreData: () => false,
+  refreshHostData: () => setTimeout(update, 50),
+  downloadService: {
+    exportStatus: async () => (document.getElementById("noexport").checked ? 1 : 0),
+    exportVisualsContent: async (c, name, type) => { window.lastExport = { c, name, type }; log(`EXPORT ${name} (${type}, ${c.length} base64-tegn)`); return true; }
+  }
+};
+function update() {
+  visual.update({ dataViews: dataView(), type: 2 | 4, viewport: { width: 1000, height: 520 } });
+}
+visual = plugin.create({ element: document.getElementById("host"), host });
+update();
+</script>
+</body>
+</html>
