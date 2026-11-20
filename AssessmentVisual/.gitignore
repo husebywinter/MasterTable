@@ -4,5 +4,6 @@ dist/*
 !dist/*.pbiviz
 !dist/Dummydata*
 !dist/local.settings.json
+!dist/MasterTable-function.zip
 webpack.statistics.*.html
 certs/

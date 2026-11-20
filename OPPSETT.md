@@ -96,29 +96,27 @@ Begge skal gi `…privatelink…` og en `10.x.x.x`-adresse. Ser du offentlige ad
 
   - **Apply** › **Confirm**
 
-- [ ] **7. Deploy koden fra en maskin på nettverket**
+- [ ] **7. Deploy den ferdige pakken** (fra jobb-PC-en på bedriftsnettet)
 
-  GitHub Actions kjører utenfor bedriftsnettet og når ikke en Function App med bare privat tilgang. Deploy derfor fra jobb-PC-en (på nettet) eller VM-en.
+  Du trenger **ikke** Node, npm eller Git. Funksjonen er bygget ferdig, med alt den trenger, i én zip-fil. Du trenger bare **Azure CLI**. Den er ikke Node-basert, og ligger ofte i Firmaportal eller Software Center.
 
-  a. Installer én gang: [Git](https://git-scm.com), [Node.js LTS](https://nodejs.org), [Azure CLI](https://aka.ms/installazurecliwindows), og deretter:
+  a. **Last ned pakken:** [`AssessmentVisual/dist/MasterTable-function.zip`](AssessmentVisual/dist/MasterTable-function.zip) › nedlastingsikonet. Lagre den f.eks. i `Nedlastinger`.
+
+  b. **Finn resource group** for appen: `func-powerbiwriteback` › **Overview** › *Resource group*
+
+  c. **Sjekk at Azure CLI finnes:** `az --version`. Får du feil, installer [Azure CLI](https://aka.ms/installazurecliwindows) eller be IT om det.
+
+  d. **Logg inn og deploy**, én kommando om gangen:
   ```powershell
-  npm install -g azure-functions-core-tools@4
-  ```
-
-  b. Hent koden, logg inn og deploy:
-  ```powershell
-  cd $HOME\Documents
-  git clone https://github.com/husebywinter/MasterTable.git
-  cd MasterTable\AzureFunction
-  npm install
   az login
-  func azure functionapp publish func-powerbiwriteback
+  ```
+  ```powershell
+  az functionapp deployment source config-zip --resource-group <resource-group> --name func-powerbiwriteback --src "$HOME\Downloads\MasterTable-function.zip"
   ```
   - `az login` åpner nettleseren. Logg inn med jobbkontoen og godkjenn MFA.
-  - Når deployen er ferdig, står det `saveAssessment - [httpTrigger]` med URL-en
-  - Senere endringer: `git pull`, og kjør `func azure functionapp publish` på nytt
+  - Deployen tar 1–3 minutter
 
-  Alternativ: be IT sette opp en *self-hosted GitHub runner* i VNet-et, så kan deploy skje automatisk fra GitHub.
+  Alternativ uten noe på jobb-PC-en: logg inn på en VM i VNet-et via **Bastion** og kjør de samme kommandoene der. Eller be IT kjøre kommandoen for deg med zip-filen.
 
 - [ ] **8. Sjekk at funksjonen er deployet**
   - Function App › **Overview** › *Functions*: `saveAssessment` skal vises
@@ -220,7 +218,7 @@ Power BI Service står utenfor nettverket og trenger en gateway for å lese `vw_
 | Symptom | Årsak | Løsning |
 |---|---|---|
 | `Resolve-DnsName` gir offentlig IP | Ikke på bedriftsnettet, eller DNS mangler | Koble til VPN. Kontakt IT. |
-| `func … publish` feiler med 403 eller timeout | Maskinen når ikke Function App-ens private endpoint | Kjør fra bedriftsnettet eller VM-en. Sjekk `Resolve-DnsName func-powerbiwriteback-cjgbb5gbfkh4gzad.swedencentral-01.azurewebsites.net`. |
+| `az functionapp deployment …` feiler med 403 eller timeout | Maskinen når ikke Function App-ens private endpoint | Kjør fra bedriftsnettet eller VM-en. Sjekk `Resolve-DnsName func-powerbiwriteback-cjgbb5gbfkh4gzad.swedencentral-01.azurewebsites.net`. |
 | Visualen: «Fikk ikke kontakt med Function App» | Brukeren er ikke på nettet, feil URL, eller funksjonen er ikke deployet | VPN, steg 8 og steg 20 |
 | Visualen: «Ingen tilgang (401)» | Feil function key | Steg 9 og 20 |
 | Visualen: «Database error» | Funksjonen kommer ikke inn i databasen | Se loggen: Function App › *Monitoring › Log stream* |

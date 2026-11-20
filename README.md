@@ -22,6 +22,10 @@ Power BI-tabell der hver rad får en **kategori** (*Justert*, *Ikke justert*, *K
 
 ## Deploy til Azure
 
+`AssessmentVisual/dist/MasterTable-function.zip` er en ferdig deploy-pakke (funksjonen med `node_modules`). Den kan deployes uten Node: `az functionapp deployment source config-zip -g <rg> -n <app> --src MasterTable-function.zip`. Bygg den på nytt etter kodeendringer: kopier `host.json`, `package.json`, `package-lock.json` og `src/functions` til en tom mappe, kjør `npm ci --omit=dev` og zip innholdet (med `host.json` i roten).
+
+Med Node og Core Tools:
+
 ```powershell
 cd AzureFunction; npm install; func azure functionapp publish <app-navn>
 ```
