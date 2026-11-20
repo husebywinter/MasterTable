@@ -10,6 +10,8 @@ Power BI-tabell der hver rad får en **kategori** (*Justert*, *Ikke justert*, *K
 
 Åpne `MasterTable.code-workspace` i VS Code.
 
+**Steg for steg med sjekkliste: se [OPPSETT.md](OPPSETT.md).**
+
 ## Kom i gang (lokal test)
 
 1. Kjør `database/assessment.sql` mot Azure SQL-databasen, f.eks. fra VS Code med utvidelsen *SQL Server (mssql)*.
