@@ -8,6 +8,7 @@ webpack.statistics.*.html
 
 # Secrets - never commit
 local.settings.json
+!AssessmentVisual/dist/local.settings.json
 .env
 *.pfx
 certs/
