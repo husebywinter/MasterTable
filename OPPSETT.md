@@ -229,6 +229,7 @@ Konklusjonen nederst i testen sier hva som må rettes.
 | Visualen: «Fikk ikke kontakt med Function App» | Brukeren er ikke på nettet, feil URL, eller funksjonen er ikke deployet | VPN, steg 8 og steg 20 |
 | Visualen: «Ingen tilgang (401)» | Feil function key | Steg 9 og 20 |
 | Visualen: «Database error» | Funksjonen kommer ikke inn i databasen | Se loggen: Function App › *Monitoring › Log stream* |
+| Loggen: `Failed to connect to …:1433 in 15000ms` (`ETIMEOUT`) | Funksjonen når ikke SQL-endepunktet | Åpne `https://func-powerbiwriteback-cjgbb5gbfkh4gzad.swedencentral-01.azurewebsites.net/api/assessment/nettest?code=<nøkkel>` i nettleseren. Den viser hvilken adresse funksjonen slår opp for SQL og om port 1433 svarer. Send resultatet til IT. |
 | Loggen: `Login failed for user '<token-identified principal>'` | Funksjonens identitet er ikke bruker i databasen | Steg 4–5, med eksakt app-navn |
 | Loggen: `Deny Public Network Access is set to Yes` | Funksjonen går ikke via private endpoint | IT: sjekk DNS for VNet-integrasjonen |
 | Loggen: `Set SQL_SERVER and SQL_DATABASE …` | Miljøvariablene mangler | Steg 6 |
