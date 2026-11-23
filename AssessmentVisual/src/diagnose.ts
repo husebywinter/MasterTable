@@ -11,6 +11,8 @@ import { buildUrl, validateEndpoint } from "./api";
  *                     firewall, browser local-network block)
  *  4. API           - a real CORS POST with an empty body; the function answers
  *                     400 "batchId must be a UUID" without touching the database
+ *  5. database      - the function's own network test (GET /api/assessment/nettest):
+ *                     how it resolves the SQL server and whether TCP 1433 answers
  * No Power BI dependencies: web access status and fetch are passed in.
  */
 
@@ -61,6 +63,53 @@ async function withTimeout<T>(ms: number, run: (signal: AbortSignal) => Promise<
     } finally {
         clearTimeout(timer);
     }
+}
+
+/** Result of GET /api/assessment/nettest (see AzureFunction/src/functions/networkTest.js). */
+interface NetTest {
+    sqlServer: string | null;
+    dns?: { addresses?: string[]; private?: boolean; error?: string };
+    tcp1433?: { open: boolean; error?: string; ms: number };
+    conclusion?: string;
+}
+
+/**
+ * 5. Database network, seen from the Function App: asks the function how it
+ * resolves the SQL server and whether TCP 1433 answers.
+ */
+async function databaseStep(api: URL, deps: DiagDeps, timeout: number, steps: DiagStep[]): Promise<DiagResult> {
+    const name = "Funksjon → database";
+    const testUrl = new URL("/api/assessment/nettest", api.origin);
+    const code = api.searchParams.get("code");
+    if (code) testUrl.searchParams.set("code", code);
+    let body: NetTest | null = null;
+    try {
+        const res = await withTimeout(timeout, signal => deps.fetch(testUrl.toString(), { method: "GET", cache: "no-store", signal }));
+        if (res.status === 404) {
+            steps.push({ name, status: "skip", detail: "Nettverkstesten finnes ikke i funksjonen. Deploy den nyeste MasterTable-function.zip for å teste veien til databasen." });
+            return { steps, ok: true, conclusion: "Tilkoblingen til funksjonen virker. Veien videre til databasen kunne ikke testes (gammel funksjonspakke)." };
+        }
+        body = JSON.parse(await res.text()) as NetTest;
+    } catch (err) {
+        steps.push({ name, status: "skip", detail: `Fikk ikke kjørt nettverkstesten (${errorText(err)}).` });
+        return { steps, ok: true, conclusion: "Tilkoblingen til funksjonen virker. Veien videre til databasen kunne ikke testes." };
+    }
+
+    const ip = body.dns?.addresses?.[0];
+    const tcp = body.tcp1433;
+    const parts = [
+        ip ? `${body.sqlServer} → ${ip} (${body.dns.private ? "privat" : "offentlig"} adresse)` : `DNS: ${body.dns?.error ?? "ingen adresse"}`,
+        tcp ? (tcp.open ? `port 1433 åpen (${tcp.ms} ms)` : `port 1433 svarer ikke (${tcp.error})`) : ""
+    ].filter(Boolean);
+    const ok = !!ip && body.dns.private === true && tcp?.open === true;
+    steps.push({ name, status: ok ? "ok" : "fail", detail: parts.join(", ") + "." });
+    return {
+        steps,
+        ok,
+        conclusion: ok
+            ? "Hele veien virker: visual → funksjon → database. Feiler lagring fortsatt, er det innlogging eller rettigheter i databasen (se loggen i Function App-en)."
+            : (body.conclusion ?? "Funksjonen når ikke databasen. Send denne testen til IT.")
+    };
 }
 
 export async function diagnose(endpoint: string, functionKey: string, deps: DiagDeps): Promise<DiagResult> {
@@ -143,7 +192,7 @@ export async function diagnose(endpoint: string, functionKey: string, deps: Diag
         const text = await res.text().catch(() => "");
         if (res.status === 400 && /batchId/i.test(text)) {
             steps.push({ name: "Funksjon og nøkkel", status: "ok", detail: "Funksjonen svarer, og nøkkelen er gyldig (HTTP 400 på testkall, som forventet)." });
-            return done("Tilkoblingen virker. Feiler lagring fortsatt, se meldingen ved lagring eller loggen i Function App-en.", true);
+            return databaseStep(parsed, deps, timeout, steps);
         }
         const byStatus: Record<number, string> = {
             401: "Feil eller manglende function key (HTTP 401). Kopier nøkkelen på nytt via «Get function URL».",

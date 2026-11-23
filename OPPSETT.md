@@ -210,7 +210,7 @@ Power BI Service står utenfor nettverket og trenger en gateway for å lese `vw_
 
 ## Hvis noe går galt
 
-**Start med tilkoblingstesten i visualen:** klikk på puls-ikonet i verktøylinjen (*Test tilkoblingen til Function App*). Testen kjøres også automatisk når en lagring ikke får kontakt. Den sjekker trinn for trinn:
+**Start med tilkoblingstesten i visualen:** klikk på puls-ikonet i verktøylinjen (*Test tilkoblingen til Function App*). Testen kjøres også automatisk når en lagring ikke får kontakt eller gir «Database error». Den sjekker trinn for trinn:
 
 | Trinn | Hva som sjekkes |
 |---|---|
@@ -218,6 +218,7 @@ Power BI Service står utenfor nettverket og trenger en gateway for å lese `vw_
 | Web-tilgang i Power BI | At Power BI tillater visualen å kalle adressen (tenant-innstilling og visualens liste over domener) |
 | Nettverk | At nettleseren når Function App-en i det hele tatt (VPN, brannmur, sperre for lokalt nettverk) |
 | Funksjon og nøkkel | Et testkall som ikke lagrer noe: riktig URL, gyldig nøkkel og CORS |
+| Funksjon → database | Hvilken adresse funksjonen slår opp for SQL (privat/offentlig), og om port 1433 svarer. Krever nyeste `MasterTable-function.zip`. |
 
 Konklusjonen nederst i testen sier hva som må rettes.
 

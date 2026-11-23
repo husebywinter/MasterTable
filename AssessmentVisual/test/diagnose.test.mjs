@@ -59,16 +59,50 @@ assert.equal(maskUrl(`${URL_}?code=${KEY}`), `${URL_}?code=abcd…==`);
     assert.match(r.conclusion, /401/);
 }
 
-// all good: 400 with batchId validation error, key sent as ?code=
+// function OK, but old package without nettest (404) -> step skipped, overall ok
 {
     let postedUrl = "";
     const r = await diagnose(URL_, KEY, {
-        fetch: async (u, i) => { if (i.mode === "no-cors") return res(0); postedUrl = u; return res(400, '{"error":"batchId must be a UUID."}'); },
+        fetch: async (u, i) => {
+            if (i.mode === "no-cors") return res(0);
+            if (i.method === "GET") return res(404);
+            postedUrl = u; return res(400, '{"error":"batchId must be a UUID."}');
+        },
         webAccess: async () => "Unknown"
     });
     assert.equal(r.ok, true);
     assert.equal(new URL(postedUrl).searchParams.get("code"), KEY);
     assert.equal(r.steps[1].status, "skip", "unknown web access status is skipped, not failed");
+    assert.equal(r.steps.at(-1).status, "skip");
+}
+
+// database step: public address -> fail with the function's conclusion; key passed on
+const okApi = (nettest, seen) => async (u, i) => {
+    if (i.mode === "no-cors") return res(0);
+    if (i.method === "GET") { seen && seen.push(u); return res(200, JSON.stringify(nettest)); }
+    return res(400, '{"error":"batchId must be a UUID."}');
+};
+{
+    const seen = [];
+    const r = await diagnose(URL_, KEY, { fetch: okApi({ sqlServer: "sql-x.database.windows.net", dns: { addresses: ["51.12.46.33"], private: false }, tcp1433: { open: true, ms: 30 }, conclusion: "IT: DNS" }, seen), webAccess: allowed });
+    assert.equal(r.ok, false);
+    assert.equal(r.steps.at(-1).status, "fail");
+    assert.match(r.steps.at(-1).detail, /offentlig/);
+    assert.equal(r.conclusion, "IT: DNS");
+    assert.equal(new URL(seen[0]).pathname, "/api/assessment/nettest");
+    assert.equal(new URL(seen[0]).searchParams.get("code"), KEY);
+}
+// database step: private address, port closed
+{
+    const r = await diagnose(URL_, KEY, { fetch: okApi({ sqlServer: "s", dns: { addresses: ["10.1.2.3"], private: true }, tcp1433: { open: false, error: "timeout after 5000 ms", ms: 5000 }, conclusion: "IT: 1433" }), webAccess: allowed });
+    assert.equal(r.ok, false);
+    assert.match(r.steps.at(-1).detail, /svarer ikke/);
+}
+// database step: everything open
+{
+    const r = await diagnose(URL_, KEY, { fetch: okApi({ sqlServer: "s", dns: { addresses: ["10.1.2.3"], private: true }, tcp1433: { open: true, ms: 12 } }), webAccess: allowed });
+    assert.equal(r.ok, true);
+    assert.match(r.conclusion, /Hele veien virker/);
 }
 
 console.log("Diagnose tests passed");

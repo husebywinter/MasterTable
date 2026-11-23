@@ -333,8 +333,8 @@ export class Visual implements IVisual {
         } catch (err) {
             if (!(err instanceof NetworkError)) this.pendingBatch = null;
             this.setStatus((err as Error).message, true);
-            // Network-level failures hide the cause; find out where it stops
-            if (err instanceof NetworkError) void this.testConnection();
+            // Network-level and database failures hide the cause; find out where it stops
+            if (err instanceof NetworkError || /database error/i.test((err as Error).message)) void this.testConnection();
         } finally {
             this.saving = false;
             this.render();

@@ -18,6 +18,7 @@
   <label><input type="checkbox" id="noexport"> Simuler blokkert Power BI-eksport</label>
   <label><input type="checkbox" id="nonet"> Simuler at nettverket feiler</label>
   <label><input type="checkbox" id="nocors"> Simuler CORS-feil</label>
+  <label><input type="checkbox" id="nodb"> Simuler at funksjonen ikke når databasen</label>
 </div>
 <div id="host"></div>
 <div id="log"></div>
@@ -69,7 +70,15 @@ window.fetch = async (url, init = {}) => {
   if (document.getElementById("nonet").checked) throw new TypeError("Failed to fetch");
   if (init.mode === "no-cors") return new Response("", { status: 200 });
   if (document.getElementById("nocors").checked) throw new TypeError("Failed to fetch");
+  const nodb = document.getElementById("nodb").checked;
+  if ((init.method || "GET") === "GET" && String(url).includes("/nettest")) {
+    return new Response(JSON.stringify(nodb
+      ? { sqlServer: "sql-powerbiwriteback.database.windows.net", dns: { addresses: ["10.233.240.4"], private: true }, tcp1433: { open: false, error: "timeout after 5000 ms", ms: 5000 },
+          conclusion: "DNS er riktig (privat adresse 10.233.240.4), men port 1433 svarer ikke (timeout after 5000 ms). IT: åpne TCP 1433 fra subnet-func-integration til pe-sqc-sql i NSG og Azure Firewall." }
+      : { sqlServer: "sql-powerbiwriteback.database.windows.net", dns: { addresses: ["10.233.240.4"], private: true }, tcp1433: { open: true, ms: 9 } }), { status: 200 });
+  }
   const body = JSON.parse(init.body);
+  if (nodb && body.rows) return new Response(JSON.stringify({ error: "Database error. See function logs for details." }), { status: 500 });
   if (!body.batchId) return new Response(JSON.stringify({ error: "batchId must be a UUID." }), { status: 400 });
   log("POST " + url.split("?")[0] + "\n" + JSON.stringify(body, null, 1));
   if (document.getElementById("conflict").checked) {
