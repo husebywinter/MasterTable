@@ -13,6 +13,8 @@
     "files": [
         "./src/model.ts",
         "./src/format.ts",
-        "./src/export.ts"
+        "./src/export.ts",
+        "./src/diagnose.ts",
+        "./src/api.ts"
     ]
 }

@@ -16,6 +16,8 @@
   Harness med mock-API (lagrer i minnet).
   <label><input type="checkbox" id="conflict"> Simuler at en annen bruker endret P-1002 / 2026</label>
   <label><input type="checkbox" id="noexport"> Simuler blokkert Power BI-eksport</label>
+  <label><input type="checkbox" id="nonet"> Simuler at nettverket feiler</label>
+  <label><input type="checkbox" id="nocors"> Simuler CORS-feil</label>
 </div>
 <div id="host"></div>
 <div id="log"></div>
@@ -63,8 +65,12 @@ function dataView() {
 }
 
 // ── Mock Azure Function ──
-window.fetch = async (url, init) => {
+window.fetch = async (url, init = {}) => {
+  if (document.getElementById("nonet").checked) throw new TypeError("Failed to fetch");
+  if (init.mode === "no-cors") return new Response("", { status: 200 });
+  if (document.getElementById("nocors").checked) throw new TypeError("Failed to fetch");
   const body = JSON.parse(init.body);
+  if (!body.batchId) return new Response(JSON.stringify({ error: "batchId must be a UUID." }), { status: 400 });
   log("POST " + url.split("?")[0] + "\n" + JSON.stringify(body, null, 1));
   if (document.getElementById("conflict").checked) {
     document.getElementById("conflict").checked = false;
@@ -94,6 +100,7 @@ let visual;
 const host = {
   locale: "nb-NO",
   createSelectionManager: () => ({ showContextMenu() {} }),
+  webAccessService: { webAccessStatus: async () => 0 },
   eventService: { renderingStarted() {}, renderingFinished() {}, renderingFailed(o, e) { log("FAILED " + e); } },
   fetchMoreData: () => false,
   refreshHostData: () => setTimeout(update, 50),

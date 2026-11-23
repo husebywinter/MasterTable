@@ -56,10 +56,11 @@ export async function saveAssessments(endpoint: string, functionKey: string, pay
             body: JSON.stringify(payload),
             signal: controller.signal
         });
-    } catch {
+    } catch (err) {
         if (controller.signal.aborted) throw new NetworkError("Lagringen fikk tidsavbrudd. Lagre på nytt for å prøve igjen.");
-        // fetch rejects without detail on CORS, DNS and WebAccess-privilege failures
-        throw new NetworkError("Fikk ikke kontakt med Function App (nettverk, CORS eller blokkert web-tilgang).");
+        // fetch rejects without detail on CORS, DNS and WebAccess-privilege failures; the connection test narrows it down
+        const reason = err instanceof Error ? ` [${err.name}: ${err.message}]` : "";
+        throw new NetworkError(`Fikk ikke kontakt med Function App${reason}. Se tilkoblingstesten under.`);
     } finally {
         clearTimeout(timer);
     }

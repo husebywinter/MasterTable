@@ -18,6 +18,7 @@ Visual ──POST /api/assessment/save──▶ AzureFunction/saveAssessment.js 
 | `src/model.ts` | Rader, ulagrede endringer med original-verdier, payload |
 | `src/table.ts` | Tabellen: sortering, søk, filter, nedtrekksliste og kommentarfelt |
 | `src/api.ts` | Kall mot `saveAssessment` |
+| `src/diagnose.ts` | Tilkoblingstest (puls-knappen): innstillinger, web-tilgang, nettverk og funksjon/nøkkel |
 | `src/format.ts` | Visningsformat for verdier og stabile nøkkelverdier |
 | `src/settings.ts` | Format pane (Tabell og Write-back) |
 | `test/*.test.mjs` | Tester for modell og Excel-eksport (`npm test`) |
@@ -91,7 +92,7 @@ Svar: `200 {status: "saved" | "duplicate", inserted, updated, deleted}`, `409 {s
 - Enter / Shift+Enter (og pil opp/ned i kommentarfeltet) flytter til neste/forrige rad. Esc angrer raden. Ctrl+S lagrer.
 - Klikk på en kolonneoverskrift for å sortere. Søk, kategorifilter (inkl. *Uten kategori*) og *Bare endrede* i verktøylinjen.
 - Gult betyr ulagret endring. Rødt betyr konflikt med en annen brukers endring.
-- Verktøylinjen har Lagre, Forkast og **Eksporter til Excel**. Eksporten tar med radene som vises (søk, filter og sortering gjelder), med målenes tallformat, fargede kategorier, frosset overskrift og autofilter. Ulagrede kommentarer er gule i filen.
+- Verktøylinjen har Lagre, Forkast, **Eksporter til Excel** og **Test tilkobling** (puls-ikonet), som viser trinn for trinn hvor et kall til Function App-en stopper. Eksporten tar med radene som vises (søk, filter og sortering gjelder), med målenes tallformat, fargede kategorier, frosset overskrift og autofilter. Ulagrede kommentarer er gule i filen.
 - Eksporten går via Power BI (`exportVisualsContent`) og krever at tenant-admin tillater eksport fra custom visuals. Er det blokkert, vises en nedlastingslenke i verktøylinjen i stedet.
 
 ## Nyttige spørringer

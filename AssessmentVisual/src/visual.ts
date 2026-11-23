@@ -19,6 +19,7 @@ import { TableView, Column, FILTER_ALL, FILTER_NONE } from "./table";
 import { ValueFormat, keyText } from "./format";
 import { Conflict, NetworkError, saveAssessments, validateEndpoint } from "./api";
 import { RawValue, buildWorkbook, workbookBase64, workbookBlob } from "./export";
+import { DiagResult, WebAccessStatus, diagnose } from "./diagnose";
 
 const SVG_NS = "http://www.w3.org/2000/svg";
 
@@ -26,7 +27,15 @@ const SVG_NS = "http://www.w3.org/2000/svg";
 const ICONS: Record<string, string> = {
     save: "M5 3h11l3 3v15H5z M8 3v5h7V3 M8 21v-7h8v7",
     discard: "M6 6l12 12 M18 6L6 18",
-    download: "M12 4v11 M7 10l5 5 5-5 M5 20h14"
+    download: "M12 4v11 M7 10l5 5 5-5 M5 20h14",
+    test: "M3 12h4l3-8 4 16 3-8h4"
+};
+
+const WEB_ACCESS: Record<number, WebAccessStatus> = {
+    [powerbi.PrivilegeStatus.Allowed]: "Allowed",
+    [powerbi.PrivilegeStatus.NotDeclared]: "NotDeclared",
+    [powerbi.PrivilegeStatus.NotSupported]: "NotSupported",
+    [powerbi.PrivilegeStatus.DisabledByAdmin]: "DisabledByAdmin"
 };
 
 interface ColumnIndex {
@@ -46,6 +55,8 @@ export class Visual implements IVisual {
     private readonly titleEl: HTMLElement;
     private readonly statusEl: HTMLElement;
     private readonly messageEl: HTMLElement;
+    private readonly diagEl: HTMLElement;
+    private testing = false;
     private readonly filterEl: HTMLSelectElement;
     private readonly searchEl: HTMLInputElement;
     private readonly changedEl: HTMLInputElement;
@@ -84,6 +95,7 @@ export class Visual implements IVisual {
         this.addButton(toolbar, "save", "Lagre til databasen (Ctrl+S)", () => void this.save());
         this.addButton(toolbar, "discard", "Forkast endringer", () => this.discard());
         this.addButton(toolbar, "download", "Eksporter til Excel (rader som vises)", () => void this.exportXlsx());
+        this.addButton(toolbar, "test", "Test tilkoblingen til Function App", () => void this.testConnection());
 
         this.searchEl = document.createElement("input");
         this.searchEl.type = "search";
@@ -112,6 +124,11 @@ export class Visual implements IVisual {
         toolbar.appendChild(this.statusEl);
         header.appendChild(toolbar);
         root.appendChild(header);
+
+        this.diagEl = document.createElement("div");
+        this.diagEl.className = "at-diag";
+        this.diagEl.style.display = "none";
+        root.appendChild(this.diagEl);
 
         this.messageEl = document.createElement("div");
         this.messageEl.className = "at-message";
@@ -316,10 +333,73 @@ export class Visual implements IVisual {
         } catch (err) {
             if (!(err instanceof NetworkError)) this.pendingBatch = null;
             this.setStatus((err as Error).message, true);
+            // Network-level failures hide the cause; find out where it stops
+            if (err instanceof NetworkError) void this.testConnection();
         } finally {
             this.saving = false;
             this.render();
         }
+    }
+
+    /** Runs the step-by-step connection test and shows the result above the table. */
+    private async testConnection(): Promise<void> {
+        if (this.testing) return;
+        const wb = this.settings.writeBackCard;
+        this.testing = true;
+        this.showDiag(null);
+        try {
+            const result = await diagnose(wb.endpoint.value.trim(), wb.functionKey.value.trim(), {
+                fetch: (input, init) => fetch(input, init),
+                webAccess: async url => {
+                    const service = this.host.webAccessService;
+                    if (!service?.webAccessStatus) return "Unknown";
+                    return WEB_ACCESS[await service.webAccessStatus(url)] ?? "Unknown";
+                }
+            });
+            this.showDiag(result);
+        } finally {
+            this.testing = false;
+        }
+    }
+
+    private showDiag(result: DiagResult | null): void {
+        const el = this.diagEl;
+        el.replaceChildren();
+        el.style.display = "";
+        el.classList.toggle("ok", !!result?.ok);
+
+        const head = document.createElement("div");
+        head.className = "at-diag-head";
+        const title = document.createElement("strong");
+        title.textContent = result ? (result.ok ? "Tilkoblingstest: OK" : "Tilkoblingstest: feilet") : "Tester tilkoblingen…";
+        const close = document.createElement("button");
+        close.className = "at-diag-close";
+        close.textContent = "✕";
+        close.title = "Lukk";
+        close.setAttribute("aria-label", "Lukk tilkoblingstest");
+        close.addEventListener("click", () => { el.style.display = "none"; });
+        head.append(title, close);
+        el.appendChild(head);
+        if (!result) return;
+
+        const icon = { ok: "✔", fail: "✖", warn: "!", skip: "–" };
+        const list = document.createElement("ol");
+        for (const s of result.steps) {
+            const li = document.createElement("li");
+            li.className = `step-${s.status}`;
+            const mark = document.createElement("span");
+            mark.className = "mark";
+            mark.textContent = icon[s.status];
+            const name = document.createElement("b");
+            name.textContent = s.name + ": ";
+            li.append(mark, name, document.createTextNode(s.detail));
+            list.appendChild(li);
+        }
+        el.appendChild(list);
+        const conclusion = document.createElement("div");
+        conclusion.className = "at-diag-conclusion";
+        conclusion.textContent = result.conclusion;
+        el.appendChild(conclusion);
     }
 
     private markConflicts(conflicts: Conflict[]): void {

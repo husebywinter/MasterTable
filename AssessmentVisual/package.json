@@ -8,7 +8,7 @@
     "start": "pbiviz start",
     "package": "pbiviz package",
     "lint": "npx eslint .",
-    "test": "tsc -p tsconfig.test.json && node test/model.test.mjs && node test/export.test.mjs"
+    "test": "tsc -p tsconfig.test.json && node test/model.test.mjs && node test/export.test.mjs && node test/diagnose.test.mjs"
   },
   "dependencies": {
     "powerbi-visuals-api": "5.11.0",
