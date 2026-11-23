@@ -61,9 +61,9 @@ app.http("networkTest", {
     if (!first) {
       result.conclusion = "Funksjonen får ikke slått opp SQL-serveren i DNS. IT: sjekk DNS for VNet-et (privat DNS-sone privatelink.database.windows.net).";
     } else if (!result.dns.private) {
-      result.conclusion = `Funksjonen slår opp SQL til en OFFENTLIG adresse (${first}). IT: DNS i VNet-et må gi den private adressen til pe-sqc-sql (privat DNS-sone privatelink.database.windows.net koblet til VNet-et, eller videresending i egen DNS).`;
+      result.conclusion = `Funksjonen slår opp SQL til en OFFENTLIG adresse (${first}). IT: DNS i VNet-et må gi den private adressen til pe-swc-sql (privat DNS-sone privatelink.database.windows.net koblet til VNet-et, eller videresending i egen DNS).`;
     } else if (!result.tcp1433.open) {
-      result.conclusion = `DNS er riktig (privat adresse ${first}), men port 1433 svarer ikke (${result.tcp1433.error}). IT: åpne TCP 1433 fra subnet-func-integration til pe-sqc-sql i NSG og Azure Firewall.`;
+      result.conclusion = `DNS er riktig (privat adresse ${first}), men port 1433 svarer ikke (${result.tcp1433.error}). IT: åpne TCP 1433 fra subnet-func-integration til pe-swc-sql i NSG og Azure Firewall.`;
     } else {
       result.conclusion = `Nettverket til SQL virker (privat adresse ${first}, port 1433 åpen). Feiler lagring fortsatt, er det innlogging eller rettigheter i databasen.`;
     }
